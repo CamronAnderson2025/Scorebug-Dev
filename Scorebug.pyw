@@ -19,23 +19,53 @@ import webbrowser
 import time
 import os
 import math
-from PySide6.QtWidgets import (
+from PySide6.QtWidgets import ( QDialogButtonBox,QListWidget,QListWidgetItem,
     QApplication, QWidget, QMainWindow, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
     QGridLayout, QLineEdit, QFileDialog, QDialog, QRadioButton, QGraphicsRectItem ,  QColorDialog, QSpinBox, QMessageBox, QComboBox, QTabWidget, QLCDNumber, QCheckBox,
-    QGraphicsScene, QGraphicsPolygonItem, QGraphicsBlurEffect, QMenu, QInputDialog, QSizePolicy, QGroupBox, QGridLayout, QVBoxLayout
+    QGraphicsScene,QToolButton, QGraphicsPolygonItem, QGraphicsBlurEffect, QMenu, QInputDialog, QSizePolicy, QGroupBox, QGridLayout, QVBoxLayout
 )
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from PySide6.QtCore import Qt, QTimer, QRect, QPointF, QRectF, QObject, Signal, QUrl, Property, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import (
+from PySide6.QtGui import ( QAction,
     QPainter, QPolygonF, QColor, QIntValidator, QFont, QFontMetrics, QPixmap, QBrush,
     QPen, QLinearGradient, QPainterPath, QRadialGradient, QImage, QTextOption, QFontDatabase, QFont, QIcon
 )
 os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"
 os.environ["QT_SCALE_FACTOR"] = "1"
-current_version = "2.2.1"
+current_version = "2.3.0"
 required_update = True
 version_url = "https://raw.githubusercontent.com/CamronAnderson2025/Offical-Scorebug/main/version.txt"
 download_url = "https://github.com/CamronAnderson2025/Offical-Scorebug/releases"
+class FlashingButton(QPushButton):
+    def __init__(self, text):
+        super().__init__(text)
+        self.active = False
+        self.dot_visible = False
+        self.base_text = text
+        self.setStyleSheet("background-color:white; color:black;")
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.flash_dot)
+
+    def set_active(self, active: bool):
+        self.active = active
+        if active:
+            self.timer.start(3000)  # flash every 500ms
+        else:
+            self.timer.stop()
+            self.dot_visible = False
+            self.update_dot()
+
+    def flash_dot(self):
+        self.dot_visible = not self.dot_visible
+        self.update_dot()
+
+    def update_dot(self):
+        if self.dot_visible:
+            self.setText(f"● {self.base_text}")
+            self.setStyleSheet("background-color:white; color:red;")
+        else:
+            self.setText(self.base_text)
+            self.setStyleSheet("background-color:white; color:black;")
 class LogoWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)       
@@ -158,6 +188,8 @@ class ScoreState:
         self.away_logo_timer = 0
         self.LOGO_TOTAL = 30  
         self.serial_thread = None
+        self.home_event_flag = False
+        self.away_event_flag = False
         self.minutes = 12
         self.seconds = 0
         self.minutes_basketball = 8
@@ -179,9 +211,13 @@ class ScoreState:
         self.final_record_updated = False
         self.game_final = False
         self.home_event_active = False
+        self.home_event_flag_active = False
+        self.away_event_flag_active = False
         self.home_event_text = ""
+        self.home_event_flag_text = ""
         self.away_event_active = False
         self.away_event_text = ""
+        self.away_event_flag_text = ""
         self.stat_upper_text = ""
         self.period = 1
         self.down = 1
@@ -228,6 +264,14 @@ class ScoreState:
         self.home_event_progress = 0.0
         self.home_event_start_time = None
         self.home_event_direction = 1
+        self.home_event_flag_animating = False
+        self.home_event_flag_progress = 0.0
+        self.home_event_flag_start_time = None
+        self.home_event_flag_direction = 1
+        self.away_event_flag_animating = False
+        self.away_event_flag_progress = 0.0
+        self.away_event_flag_start_time = None
+        self.away_event_flag_direction = 1
         self.scenter_scorebug_direction = 1
         self.scenter_scorebug_animating = False
         self.scenter_scorebug_progress = 0.0
@@ -902,38 +946,73 @@ class FootballScoreboard(QWidget):
             self.draw_timeout_popup(p, right_x + 168, bar_y, self.state.home_timeout_text)
             p.restore()
             self.state.home_timeout_bar_timer -= 1
+# Draw Home Event (no forced yellow)
         if self.state.home_event_active or self.state.home_event_animating:
             progress = max(0.0, min(self.state.home_event_progress, 1.0))
             bar_height = 20
-            start_y = 965  # fully hidden
-            end_y = 945    # fully visible
+            start_y = 965
+            end_y = 945
             bar_y = int(start_y - (start_y - end_y) * progress)
+
             self.draw_top_rounded_rect(p, right_x + 113, bar_y, right_w - 115, bar_height, QColor("#2a2a2a"), radius=7)
             self.draw_glow_top_round(p, right_x + 113, bar_y, right_w - 115, 20, self.state.home_color)
-            if progress > 0.7:
-                alpha = min((progress - 0.7)/0.2, 1.0)
-            else:
-                alpha = 0.0
+
+            alpha = min(max((progress - 0.7) / 0.2, 0.0), 1.0) if progress > 0.7 else 0.0
             p.save()
             p.setOpacity(alpha)
             self.draw_event_text(p, right_x + 120, bar_y, self.state.home_event_text)
             p.restore()
+
+        # Draw Away Event (no forced yellow)
         if self.state.away_event_active or self.state.away_event_animating:
             progress = max(0.0, min(self.state.away_event_progress, 1.0))
             bar_height = 20
-            start_y = 965  # fully hidden
-            end_y = 945    # fully visible
+            start_y = 965
+            end_y = 945
             bar_y = int(start_y - (start_y - end_y) * progress)
+
             self.draw_top_rounded_rect(p, left_x + 3, bar_y, left_w - 115, bar_height, QColor("#2a2a2a"), radius=7)
             self.draw_glow_top_round(p, left_x + 3, bar_y, left_w - 115, 20, self.state.away_color)
-            if progress > 0.7:
-                alpha = min((progress - 0.7) / 0.2, 1.0)
-            else:
-                alpha = 0.0
+
+            alpha = min(max((progress - 0.7) / 0.2, 0.0), 1.0) if progress > 0.7 else 0.0
             p.save()
             p.setOpacity(alpha)
             self.draw_event_text(p, left_x + 13, bar_y, self.state.away_event_text)
-            p.restore()        
+            p.restore()
+
+            # Draw Home Flag Event
+        if self.state.home_event_flag_active or self.state.home_event_flag_animating:
+            progress = max(0.0, min(self.state.home_event_flag_progress, 1.0))
+            bar_height = 20
+            start_y = 965
+            end_y = 945
+            bar_y = int(start_y - (start_y - end_y) * progress)
+
+            self.draw_top_rounded_rect(p, right_x + 113, bar_y, right_w - 115, bar_height, QColor("#2a2a2a"), radius=7)
+            self.draw_glow_top_round(p, right_x + 113, bar_y, right_w - 115, 20, QColor("#FFD700"))
+
+            alpha = min(max((progress - 0.7) / 0.2, 0.0), 1.0) if progress > 0.7 else 0.0
+            p.save()
+            p.setOpacity(alpha)
+            self.draw_event_text(p, right_x + 120, bar_y, self.state.home_event_flag_text)
+            p.restore()
+
+        # Draw Away Flag Event
+        if self.state.away_event_flag_active or self.state.away_event_flag_animating:
+            progress = max(0.0, min(self.state.away_event_flag_progress, 1.0))
+            bar_height = 20
+            start_y = 965
+            end_y = 945
+            bar_y = int(start_y - (start_y - end_y) * progress)
+
+            self.draw_top_rounded_rect(p, left_x + 3, bar_y, left_w - 115, bar_height, QColor("#2a2a2a"), radius=7)
+            self.draw_glow_top_round(p, left_x + 3, bar_y, left_w - 115, 20, QColor("#FFD700"))
+
+            alpha = min(max((progress - 0.7) / 0.2, 0.0), 1.0) if progress > 0.7 else 0.0
+            p.save()
+            p.setOpacity(alpha)
+            self.draw_event_text(p, left_x + 13, bar_y, self.state.away_event_flag_text)
+            p.restore()   
         # -- AWAY SECTION -- #      
         if self.state.saway_box_active:
             p.setFont(self.record_font)
@@ -5516,44 +5595,39 @@ class FootballControl(QMainWindow):
         btn_nothing = QPushButton("Home Team")
         btn_nothing.clicked.connect(lambda: None)
         btn_nothing.setStyleSheet("QPushButton { background-color: #121212; color: white; }")
-        score_layout.addWidget(btn_nothing, 0, 5, 1, 2)
+        score_layout.addWidget(btn_nothing, 0, 3, 1, 2)
 
         btn_nothing = QPushButton("Away Team")
         btn_nothing.clicked.connect(lambda: None)
         btn_nothing.setStyleSheet("QPushButton { background-color: #121212; color: white; }")
-        score_layout.addWidget(btn_nothing, 0, 1, 1, 2)
-        btn_away_plus6 = QPushButton("+6")
-        btn_away_plus6.setStyleSheet("background-color:white; color:black;")
-        btn_away_plus6.clicked.connect(lambda: self.add_points(6, "away"))
-        score_layout.addWidget(btn_away_plus6, 1, 0)
-        btn_away_plus3 = QPushButton("+3")
-        btn_away_plus3.setStyleSheet("background-color:white; color:black;")
-        btn_away_plus3.clicked.connect(lambda: self.add_points(3, "away"))
-        score_layout.addWidget(btn_away_plus3, 1, 1)
-        btn_away_plus2 = QPushButton("+2")
-        btn_away_plus2.setStyleSheet("background-color:white; color:black;")
-        btn_away_plus2.clicked.connect(lambda: self.add_points(2, "away"))
-        score_layout.addWidget(btn_away_plus2, 1, 2)
-        btn_away_plus1 = QPushButton("+1")
-        btn_away_plus1.setStyleSheet("background-color:white; color:black;")
-        btn_away_plus1.clicked.connect(lambda: self.add_points(1, "away"))
-        score_layout.addWidget(btn_away_plus1, 1, 3)
-        btn_home_plus6 = QPushButton("+6")
-        btn_home_plus6.setStyleSheet("background-color:white; color:black;")
-        btn_home_plus6.clicked.connect(lambda: self.add_points(6, "home"))
-        score_layout.addWidget(btn_home_plus6, 1, 4)
-        btn_home_plus3 = QPushButton("+3")
-        btn_home_plus3.setStyleSheet("background-color:white; color:black;")
-        btn_home_plus3.clicked.connect(lambda: self.add_points(3, "home"))
-        score_layout.addWidget(btn_home_plus3, 1, 5)
-        btn_home_plus2 = QPushButton("+2")
-        btn_home_plus2.setStyleSheet("background-color:white; color:black;")
-        btn_home_plus2.clicked.connect(lambda: self.add_points(2, "home"))
-        score_layout.addWidget(btn_home_plus2, 1, 6)
-        btn_home_plus1 = QPushButton("+1")
-        btn_home_plus1.setStyleSheet("background-color:white; color:black;")
-        btn_home_plus1.clicked.connect(lambda: self.add_points(1, "home"))
-        score_layout.addWidget(btn_home_plus1, 1, 7)
+        score_layout.addWidget(btn_nothing, 0, 0, 1, 2)
+        combo_away_plus = QComboBox()
+        combo_away_plus.setStyleSheet("background-color:white; color:black;")
+        combo_away_plus.addItem("Add Points")  # placeholder
+        positive_points = [6, 3, 2, 1]
+        for points in positive_points:
+            combo_away_plus.addItem(str(points))
+        def on_add_points(index):
+            if index == 0:
+                return  # ignore placeholder
+            points = int(combo_away_plus.currentText())
+            self.add_points(points, "away")
+            combo_away_plus.setCurrentIndex(0)  # reset to placeholder
+        combo_away_plus.currentIndexChanged.connect(on_add_points)
+        score_layout.addWidget(combo_away_plus, 1, 0, 1, 2)  # place below remove dropdown
+        combo_home_plus = QComboBox()
+        combo_home_plus.setStyleSheet("background-color:white; color:black;")
+        combo_home_plus.addItem("Add Points")
+        for points in [6, 3, 2, 1]:
+            combo_home_plus.addItem(str(points))
+        def on_home_add_points(index):
+            if index == 0:
+                return
+            points = int(combo_home_plus.currentText())
+            self.add_points(points, "home")
+            combo_home_plus.setCurrentIndex(0)
+        combo_home_plus.currentIndexChanged.connect(on_home_add_points)
+        score_layout.addWidget(combo_home_plus, 1, 3, 1, 2)
         self.aw_score_box = QSpinBox()
         self.aw_score_box.setRange(0, 999)
         self.aw_score_box.setValue(self.state.away_pts)
@@ -5565,7 +5639,7 @@ class FootballControl(QMainWindow):
         self.aw_lcd.setFixedWidth(240)  # adjust width to visually cover 4 columns
         self.aw_lcd.setFixedHeight(60)  # optional, keep it one row tall
         self.aw_lcd.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed) 
-        score_layout.addWidget(self.aw_lcd, 2, 1, 1, 4)  # only one row, one column 
+        score_layout.addWidget(self.aw_lcd, 2, 0, 1, 3)  # only one row, one column 
         self.aw_score_box.valueChanged.connect(self.aw_lcd.display)
         self.hm_score_box = QSpinBox()
         self.hm_score_box.setRange(0, 999)
@@ -5580,39 +5654,35 @@ class FootballControl(QMainWindow):
         self.hm_lcd.setFixedWidth(240)
         self.hm_lcd.setFixedHeight(60)
         self.hm_lcd.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        score_layout.addWidget(self.hm_lcd, 2, 5, 1 ,4)
-        btn_away_minus6 = QPushButton("-6")
-        btn_away_minus6.setStyleSheet("background-color:white; color:black;")
-        btn_away_minus6.clicked.connect(lambda: self.add_points(-6, "away"))
-        score_layout.addWidget(btn_away_minus6, 3, 0)
-        btn_away_minus3 = QPushButton("-3")
-        btn_away_minus3.setStyleSheet("background-color:white; color:black;")
-        btn_away_minus3.clicked.connect(lambda: self.add_points(-3, "away"))
-        score_layout.addWidget(btn_away_minus3, 3, 1)
-        btn_away_minus2 = QPushButton("-2")
-        btn_away_minus2.setStyleSheet("background-color:white; color:black;")
-        btn_away_minus2.clicked.connect(lambda: self.add_points(-2, "away"))
-        score_layout.addWidget(btn_away_minus2, 3, 2)
-        btn_away_minus1 = QPushButton("-1")
-        btn_away_minus1.setStyleSheet("background-color:white; color:black;")
-        btn_away_minus1.clicked.connect(lambda: self.add_points(-1, "away"))
-        score_layout.addWidget(btn_away_minus1, 3, 3)
-        btn_home_minus6 = QPushButton("-6")
-        btn_home_minus6.setStyleSheet("background-color:white; color:black;")
-        btn_home_minus6.clicked.connect(lambda: self.add_points(-6, "home"))
-        score_layout.addWidget(btn_home_minus6, 3, 4)
-        btn_home_minus3 = QPushButton("-3")
-        btn_home_minus3.setStyleSheet("background-color:white; color:black;")
-        btn_home_minus3.clicked.connect(lambda: self.add_points(-3, "home"))
-        score_layout.addWidget(btn_home_minus3, 3, 5)
-        btn_home_minus2 = QPushButton("-2")
-        btn_home_minus2.setStyleSheet("background-color:white; color:black;")
-        btn_home_minus2.clicked.connect(lambda: self.add_points(-2, "home"))
-        score_layout.addWidget(btn_home_minus2, 3, 6)
-        btn_home_minus1 = QPushButton("-1")
-        btn_home_minus1.setStyleSheet("background-color:white; color:black;")
-        btn_home_minus1.clicked.connect(lambda: self.add_points(-1, "home"))
-        score_layout.addWidget(btn_home_minus1, 3, 7)
+        score_layout.addWidget(self.hm_lcd, 2, 3, 1 ,3)
+        self.hm_score_box.valueChanged.connect(self.hm_lcd.display)
+        combo_away_minus = QComboBox()
+        combo_away_minus.setStyleSheet("background-color:white; color:black;")
+        combo_away_minus.addItem("Remove Points")
+        negative_points = [-6, -3, -2, -1]
+        for points in negative_points:
+            combo_away_minus.addItem(str(points))
+        def on_combo_changed(index):
+            if index == 0:
+                return 
+            points = int(combo_away_minus.currentText())
+            self.add_points(points, "away")
+            combo_away_minus.setCurrentIndex(0) 
+        combo_away_minus.currentIndexChanged.connect(on_combo_changed)
+        score_layout.addWidget(combo_away_minus, 3, 0, 1, 2)
+        combo_home_minus = QComboBox()
+        combo_home_minus.setStyleSheet("background-color:white; color:black;")
+        combo_home_minus.addItem("Remove Points")
+        for points in [-6, -3, -2, -1]:
+            combo_home_minus.addItem(str(points))
+        def on_home_remove_points(index):
+            if index == 0:
+                return
+            points = int(combo_home_minus.currentText())
+            self.add_points(points, "home")
+            combo_home_minus.setCurrentIndex(0)
+        combo_home_minus.currentIndexChanged.connect(on_home_remove_points)
+        score_layout.addWidget(combo_home_minus, 3, 3, 1, 2)
         btn_poss_none = QPushButton("None")
         btn_poss_none.setStyleSheet("background-color:white; color:black;")
         btn_poss_none.clicked.connect(lambda: self.set_possession_direct(None))
@@ -5669,18 +5739,18 @@ class FootballControl(QMainWindow):
         self.min_edit.setFixedWidth(60)
         self.min_edit.setStyleSheet("background-color:white; color:black;")
         self.min_edit.editingFinished.connect(self.set_lcd_clock_from_inputs)
-        clock_layout.addWidget(self.min_edit, 6, 5)
+        clock_layout.addWidget(self.min_edit, 5, 0)
         self.sec_edit = QSpinBox()
         self.sec_edit.setRange(0, 59)
         self.sec_edit.setValue(self.state.seconds)
         self.sec_edit.setFixedWidth(60)
         self.sec_edit.setStyleSheet("background-color:white; color:black;")
         self.sec_edit.editingFinished.connect(self.set_lcd_clock_from_inputs)
-        clock_layout.addWidget(self.sec_edit, 6, 6)
+        clock_layout.addWidget(self.sec_edit, 5, 1)
         btn_set_clock = QPushButton("Set")
         btn_set_clock.setStyleSheet("background-color:white; color:black;")
         btn_set_clock.clicked.connect(self.set_lcd_clock_from_inputs)
-        clock_layout.addWidget(btn_set_clock, 6, 7)
+        clock_layout.addWidget(btn_set_clock, 5, 2)
         btn_start = QPushButton("Start Clock")
         btn_start.clicked.connect(self.start_clock)
         btn_start.setStyleSheet("background-color:white; color:black;")
@@ -5742,14 +5812,22 @@ class FootballControl(QMainWindow):
         btn_set_period.setStyleSheet("background-color:white; color:black;")
         btn_set_period.clicked.connect(self.set_period)
         game_layout.addWidget(btn_set_period, 9, 1)
-        btn_2pt = QPushButton("2PT Attempt")
-        btn_2pt.setStyleSheet("background-color:white; color:black;")
-        btn_2pt.clicked.connect(self.on_2pt_clicked)
-        game_layout.addWidget(btn_2pt, 9, 3)
-        btn_fg = QPushButton("Field Goal")
-        btn_fg.setStyleSheet("background-color:white; color:black;")
-        btn_fg.clicked.connect(self.on_fg_clicked)
-        game_layout.addWidget(btn_fg, 9, 4)
+        combo_scoring = QComboBox()
+        combo_scoring.setStyleSheet("background-color:white; color:black;")
+        combo_scoring.addItem("Select 2PT or FG")  # placeholder
+        combo_scoring.addItem("2PT Attempt")
+        combo_scoring.addItem("Field Goal")
+        def on_score_type_changed(index):
+            if index == 0:
+                return  # placeholder selected, do nothing
+            choice = combo_scoring.currentText()
+            if choice == "2PT Attempt":
+                self.on_2pt_clicked()
+            elif choice == "Field Goal":
+                self.on_fg_clicked()
+            combo_scoring.setCurrentIndex(0)  # reset to placeholder after selection
+        combo_scoring.currentIndexChanged.connect(on_score_type_changed)
+        game_layout.addWidget(combo_scoring, 9, 3, 1, 1)  # spans 2 columns where old buttons were
         self.btn_remove_event = QPushButton("Remove Event")
         self.btn_remove_event.clicked.connect(self.on_remove_event)
         self.btn_remove_event.setStyleSheet("background-color:white; color:black;")
@@ -5757,7 +5835,7 @@ class FootballControl(QMainWindow):
         btn_serial = QPushButton("Serial Connection")
         btn_serial.clicked.connect(self.on_serial_button_clicked)
         btn_serial.setStyleSheet("background-color:white; color:black;")
-        grid_info.addWidget(btn_serial, 9, 6)
+        grid_info.addWidget(btn_serial, 6, 1)
         self.flag_button = QPushButton("Flag")
         self.flag_button.setStyleSheet("background-color:white; color:black;")
         self.flag_button.clicked.connect(self.toggle_flag)
@@ -5930,19 +6008,19 @@ class FootballControl(QMainWindow):
         lbl = QLabel("Graphics:")
         lbl.setStyleSheet("color:white;")
         grid_info.addWidget(lbl, 3, 0)
-        self.btn_show_intro = QPushButton("Show Intro Graphic")
+        self.btn_show_intro = FlashingButton("Show Intro Graphic")
         self.btn_show_intro.setStyleSheet("background-color:white; color:black;")
         self.btn_show_intro.clicked.connect(lambda: self.show_intro(force_double=True))
         grid_info.addWidget(self.btn_show_intro, 3, 1)
-        self.btn_show_scorebug = QPushButton("Show Scorebug")
+        self.btn_show_scorebug = FlashingButton("Show Scorebug")
         self.btn_show_scorebug.setStyleSheet("background-color:white; color:black;")
         self.btn_show_scorebug.clicked.connect(lambda: self.show_scorebug(force_double=True))
         grid_info.addWidget(self.btn_show_scorebug, 3, 2)
-        self.btn_show_breakboard = QPushButton("Show Breakboard")
+        self.btn_show_breakboard = FlashingButton("Show Breakboard")
         self.btn_show_breakboard.setStyleSheet("background-color:white; color:black;")
         self.btn_show_breakboard.clicked.connect(lambda: self.show_breakboard(force_double=True))
         grid_info.addWidget(self.btn_show_breakboard, 3, 3)
-        self.btn_show_final = QPushButton("Show Final")
+        self.btn_show_final = FlashingButton("Show Final")
         self.btn_show_final.setStyleSheet("background-color:white; color:black;")
         self.btn_show_final.clicked.connect(lambda: self.show_final(force_double=True))
         grid_info.addWidget(self.btn_show_final, 3, 4)
@@ -6005,8 +6083,103 @@ class FootballControl(QMainWindow):
 
 
     def toggle_flag(self):
-        self.state.flag = not self.state.flag
+        dialog = QDialog()
+        dialog.setWindowTitle("Select Flag Event")
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel("Select team:"))
+        team_selector = QComboBox()
+        team_selector.addItems(["Home", "Away"])
+        layout.addWidget(team_selector)
+        layout.addWidget(QLabel("Select flag event:"))
+        flag_list = QListWidget()
+        common_flags = [
+            "Offsides","Holding","Pass Interference",
+            "Personal Foul","Unsportsmanlike Conduct",
+            "False Start","Delay of Game","Encroachment"
+        ]
+        for flag in common_flags:
+            flag_list.addItem(QListWidgetItem(flag))
+        layout.addWidget(flag_list)
+        layout.addWidget(QLabel("Or enter custom flag:"))
+        custom_flag_input = QLineEdit()
+        layout.addWidget(custom_flag_input)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        layout.addWidget(buttons)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        dialog.setLayout(layout)
+
+        if dialog.exec_() == QDialog.Accepted:
+            selected_team = team_selector.currentText()
+            selected_flag_item = flag_list.currentItem()
+            custom_flag = custom_flag_input.text().strip()
+            event_text = custom_flag if custom_flag else (selected_flag_item.text() if selected_flag_item else None)
+            if not event_text:
+                return
+
+            self.state.flag = True
+            self.state.flag_text = "FLAG"  # Center panel always says FLAG
+
+            # Trigger the **separate flag events**
+            if selected_team == "Home":
+                self.trigger_home_flag(event_text)
+            else:
+                self.trigger_away_flag(event_text)
+
+            QTimer.singleShot(15000, lambda: self.clear_flag_event(selected_team))
+            self.repaint_scoreboard()
+
+
+    def trigger_home_flag(self, text):
+        if self.state.home_event_flag_active:
+            self.state.home_event_flag_active = False
+            self.state.home_event_flag_text = ""
+            self.state.home_event_flag_direction -= 1
+            self.state.home_event_flag_animating = True
+            self.state.home_event_flag_start_time = time.time()
+        else:
+            self.state.home_event_flag_active = True
+            self.state.home_event_flag_animating = True
+            self.state.home_event_flag_progress = 0.0
+            self.state.home_event_flag_direction = 1  # expanding
+            self.state.home_event_flag_start_time = time.time()
+            self.state.home_event_flag_text = text.upper()
         self.repaint_scoreboard()
+
+    def trigger_away_flag(self, text):
+        if self.state.away_event_flag_active:
+            self.state.away_event_flag_active = False
+            self.state.away_event_flag_text = ""
+            self.state.away_event_flag_direction -= 1
+            self.state.away_event_flag_animating = True
+            self.state.away_event_flag_start_time = time.time()
+        else:
+            self.state.away_event_flag_active = True
+            self.state.away_event_flag_animating = True
+            self.state.away_event_flag_progress = 0.0
+            self.state.away_event_flag_direction = 1  # expanding
+            self.state.away_event_flag_start_time = time.time()
+            self.state.away_event_flag_text = text.upper()
+        self.repaint_scoreboard()
+
+
+    def clear_flag_event(self, team):
+        if team == "Home":
+            self.state.home_event_flag_active = False
+            self.state.home_event_flag_text = ""
+            self.state.home_event_flag_direction = -1
+            self.state.home_event_flag_animating = True
+            self.state.home_event_flag_start_time = time.time()
+        else:
+            self.state.away_event_flag_active = False
+            self.state.away_event_flag_text = ""
+            self.state.away_event_flag_direction = -1
+            self.state.away_event_flag_animating = True
+            self.state.away_event_flag_start_time = time.time()
+        self.state.flag = False
+        self.state.flag_text = ""
+        self.repaint_scoreboard()
+
     def show_intro(self, force_double=False):
         first_group=[
         ("saway_box",-1),
@@ -6049,6 +6222,10 @@ class FootballControl(QMainWindow):
             if all_done and not getattr(self.state,"intro_second_started",False):
                 start_second_group()
         self.scoreboard.update()
+        self.btn_show_intro.set_active(True)
+        self.btn_show_scorebug.set_active(False)
+        self.btn_show_breakboard.set_active(False)
+        self.btn_show_final.set_active(False)
     def show_breakboard(self, force_double=False):
         first_group=[
         ("saway_box",-1),
@@ -6091,6 +6268,10 @@ class FootballControl(QMainWindow):
             if all_done and not getattr(self.state,"breakboard_second_started",False):
                 start_second_group()
         self.scoreboard.update()
+        self.btn_show_intro.set_active(False)
+        self.btn_show_scorebug.set_active(False)
+        self.btn_show_breakboard.set_active(True)
+        self.btn_show_final.set_active(False)
     def show_scorebug(self, force_double=False):
         first_group=[("faway_box",-1),("fhome_box",-1),("cfinal_box", -1),("centerintro",-1),("homeintro",-1),("awayintro",-1),("centerbreak",-1)]
         second_group=[("saway_box",1),("shome_box",1)]
@@ -6121,6 +6302,10 @@ class FootballControl(QMainWindow):
             if all_done and not getattr(self.state,"scorebug_second_started",False):
                 start_second_group()
         self.scoreboard.update()
+        self.btn_show_intro.set_active(False)
+        self.btn_show_scorebug.set_active(True)
+        self.btn_show_breakboard.set_active(False)
+        self.btn_show_final.set_active(False)
     def show_final(self, force_double=False):
         first_group=[("saway_box",-1),("shome_box",-1),("centerintro",-1),("homeintro",-1),("awayintro",-1),("centerbreak",-1)]
         second_group=[("cfinal_box",1),("faway_box",1),("fhome_box",1)]
@@ -6150,7 +6335,11 @@ class FootballControl(QMainWindow):
             all_done=all(not getattr(self.state,f"{name}_animating") for name,_ in first_group)
             if all_done and not getattr(self.state,"final_second_started",False):
                 start_second_group()
-        self.scoreboard.update()   
+        self.scoreboard.update()
+        self.btn_show_intro.set_active(False)
+        self.btn_show_scorebug.set_active(False)
+        self.btn_show_breakboard.set_active(False)
+        self.btn_show_final.set_active(True)   
     def on_fg_clicked(self):
         team, ok = QInputDialog.getItem(self,"Select Team","Which team?",["Home", "Away"],editable=False)
         if ok:
@@ -6195,7 +6384,7 @@ class FootballControl(QMainWindow):
             self.state.away_event_direction = 1  # expanding
             self.state.away_event_start_time = time.time()
             self.state.away_event_text = text.upper()
-        self.repaint_scoreboard()  
+        self.repaint_scoreboard()
     def ui_tick(self):
         changed = False
         if self.state.breakboard_timer > 0:
@@ -6226,6 +6415,36 @@ class FootballControl(QMainWindow):
                 if self.state.home_event_progress <= 0.0:
                     self.state.home_event_animating = False
                     self.state.home_event_active = False
+            changed = True
+        if self.state.home_event_flag_animating:
+            elapsed = time.time() - (self.state.home_event_flag_start_time or time.time())
+            progress = elapsed / 3.0  # 3-second animation
+
+            if self.state.home_event_flag_direction == 1:  # expanding
+                self.state.home_event_flag_progress = min(self.state.home_event_flag_progress + progress, 1.0)
+                if self.state.home_event_flag_progress >= 1.0:
+                    self.state.home_event_flag_animating = False
+            else:  # collapsing
+                self.state.home_event_flag_progress = max(self.state.home_event_flag_progress - progress, 0.0)
+                if self.state.home_event_flag_progress <= 0.0:
+                    self.state.home_event_flag_animating = False
+                    self.state.home_event_flag_active = False
+            changed = True
+
+        # Away Flag Animation
+        if self.state.away_event_flag_animating:
+            elapsed = time.time() - (self.state.away_event_flag_start_time or time.time())
+            progress = elapsed / 3.0  # 3-second animation
+
+            if self.state.away_event_flag_direction == 1:  # expanding
+                self.state.away_event_flag_progress = min(self.state.away_event_flag_progress + progress, 1.0)
+                if self.state.away_event_flag_progress >= 1.0:
+                    self.state.away_event_flag_animating = False
+            else:  # collapsing
+                self.state.away_event_flag_progress = max(self.state.away_event_flag_progress - progress, 0.0)
+                if self.state.away_event_flag_progress <= 0.0:
+                    self.state.away_event_flag_animating = False
+                    self.state.away_event_flag_active = False
             changed = True
         if self.state.away_event_animating:
             elapsed = time.time() - self.state.away_event_start_time
@@ -6481,7 +6700,7 @@ class FootballControl(QMainWindow):
             self.state.home_pts = int(self.hm_score_box.value())
         except Exception:
             pass
-        self.update()
+        self.repaint_scoreboard()
     def add_points(self, pts, team):
         if team == "home":
             self.state.home_pts = max(0, self.state.home_pts + pts)
