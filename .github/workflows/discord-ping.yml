@@ -1,6 +1,5 @@
 name: Discord Role Ping
 
-# Run on any push to the main branch
 on:
   push:
     branches: [ main ]
@@ -13,5 +12,5 @@ jobs:
       - name: Send message to Discord
         run: |
           curl -H "Content-Type: application/json" \
-               -d "{\"content\": \"<@&1486366928510386206> New commit pushed by ${{ github.actor }}: ${{ github.event.head_commit.message }}\"}" \
+               -d "{\"content\": \"<@&1486366928510386206> New commit pushed by **${{ github.actor }}**: ${{ github.event.head_commit.message }}\"}" \
                ${{ secrets.DISCORD_WEBHOOK }}
