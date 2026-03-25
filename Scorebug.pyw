@@ -5774,7 +5774,7 @@ class FootballControl(QMainWindow):
         self.play_timer = QTimer()
         self.play_timer.setInterval(1000)
         self.play_timer.timeout.connect(self.play_tick)
-        # ----------------- PAGE 2: Away Setup -----------------
+        #- ----------------- PAGE 2: Away Setup -----------------
         grid_away.addWidget(QLabel("<b>Away Team Setup</b>"), -1, 0)
         lbl_away_name = QLabel("Enter Away Name:")
         lbl_away_name.setStyleSheet("color:white;")
