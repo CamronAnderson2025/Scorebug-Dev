@@ -11,7 +11,7 @@ jobs:
 
     steps:
       - name: Send message to Discord
-        uses: Ilshidur/action-discord@v3
+        uses: peter-evans/discord-webhook@v1
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
           message: "<@&1486366928510386206> New commit pushed by ${{ github.actor }}: ${{ github.event.head_commit.message }}"
