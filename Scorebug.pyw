@@ -5493,8 +5493,8 @@ class FootballControl(QMainWindow):
         score_group.setLayout(score_layout)
         clock_group.setLayout(clock_layout)
         game_group.setLayout(game_layout)
-        grid.addWidget(score_group, 0, 0)
-        grid.addWidget(clock_group, 0, 1)
+        grid.addWidget(score_group, 0, 0, 1, 2)
+        grid.addWidget(clock_group, 1, 1)
         grid.addWidget(game_group, 1, 0)
         # Page 2 — Away Setup
         page3 = QWidget()
