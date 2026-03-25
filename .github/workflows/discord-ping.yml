@@ -14,4 +14,4 @@ jobs:
         uses: Ilshidur/action-discord@v2
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
-          message: "<@&1486366928510386206> New commit pushed to main!"
+          message: "<@&1486366928510386206> New commit pushed by ${{ github.actor }}: ${{ github.event.head_commit.message }}"
