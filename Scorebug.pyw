@@ -570,49 +570,65 @@ class FootballScoreboard(QWidget):
                 p.setOpacity(0.0)
             p.setFont(self.introrecord_font)
             p.setPen(Qt.white)
-            if not (rw==0 and rl==0):
-                p.drawText(left_x+200,964.5,120,35,Qt.AlignLeft,f"{rw}-{rl}")
-            if not (dw==0 and dl==0):
-                p.drawText(left_x+180,960,120,35,Qt.AlignLeft,f"({dw}-{dl})")
-            rank,name=self.format_rank_name(self.state.away_rank,self.state.away_name)
-            metrics_rank=QFontMetrics(self.introrank_font)
-            metrics_name=QFontMetrics(self.introtitle_font)
-            rank_w=metrics_rank.horizontalAdvance(rank) if rank else 0
-            name_w=metrics_name.horizontalAdvance(name) if name else 0
-            base_x=left_x+20
-            gap=5
-            total_w=rank_w+(gap if rank else 0)+name_w
-            right_limit=left_x+275
-            available=right_limit-base_x-5
-            scale=1.0
-            if total_w>available and available>0:
-                scale=available/total_w
-            rank_w=int(rank_w*scale)
-            name_w=int(name_w*scale)
-            if rank:
-                font=QFont(self.introrank_font)
-                font.setPointSizeF(font.pointSizeF()*scale)
-                p.setFont(font)
-                p.drawText(base_x,880,rank_w,35,Qt.AlignRight|Qt.AlignVCenter,rank)
-                name_x=base_x+rank_w+gap
-            else:
-                name_x=base_x
-            font=QFont(self.introtitle_font)
-            font.setPointSizeF(font.pointSizeF()*scale)
-            p.setFont(font)
-            p.drawText(name_x,880,name_w+2,35,Qt.AlignLeft|Qt.AlignVCenter,name)
-            mascot=getattr(self.state,"away_mascot",None)
+            has_record = not (rw == 0 and rl == 0)
+            has_district = not (dw == 0 and dl == 0)
+
+            if has_record:
+                if has_district:
+                    # Normal position when both exist
+                    p.drawText(left_x + 145, 964.5, 120, 35, Qt.AlignLeft, f"{rw}-{rl}")
+                else:
+                    # Move into district spot when district is missing
+                    p.drawText(left_x + 210, 960, 120, 35, Qt.AlignLeft, f"{rw}-{rl}")
+
+            if has_district:
+                p.drawText(left_x + 205, 960, 120, 35, Qt.AlignLeft, f"({dw}-{dl})")
+            rank, name = self.format_rank_name(self.state.away_rank, self.state.away_name)
+
+            metrics_rank = QFontMetrics(self.introrank_font)
+            metrics_name = QFontMetrics(self.introtitle_font)
+
+            rank_w = metrics_rank.horizontalAdvance(rank) if rank else 0
+            name_w = metrics_name.horizontalAdvance(name) if name else 0
+
+            base_x = left_x + 20
+            gap = 5
+            right_limit = left_x + 275
+            mascot_right = right_limit - 10
+
+            # --- Mascot ---
+            mascot = getattr(self.state, "away_mascot", None)
+
             if mascot:
-                metrics_mascot=QFontMetrics(self.introtitle_font)
-                mascot_w=metrics_mascot.horizontalAdvance(mascot)
-                mascot_y=928
-                mascot_max_w=right_limit-name_x-6
-                if mascot_max_w>0 and mascot_w>mascot_max_w:
-                    mascot=metrics_mascot.elidedText(mascot,Qt.ElideRight,mascot_max_w)
-                    mascot_w=metrics_mascot.horizontalAdvance(mascot)
-                used_w=min(mascot_w,mascot_max_w) if mascot_max_w>0 else mascot_w
-                mascot_x=right_limit-used_w-10
-                p.drawText(mascot_x,mascot_y,used_w,30,Qt.AlignRight|Qt.AlignVCenter,mascot)
+                metrics_mascot = QFontMetrics(self.introtitle_font)
+                mascot_w = metrics_mascot.horizontalAdvance(mascot)
+
+                mascot_max_w = right_limit - base_x - 10
+                if mascot_max_w > 0 and mascot_w > mascot_max_w:
+                    mascot = metrics_mascot.elidedText(mascot, Qt.ElideRight, mascot_max_w)
+                    mascot_w = metrics_mascot.horizontalAdvance(mascot)
+
+                mascot_x = mascot_right - mascot_w
+            else:
+                mascot_w = 0
+                mascot_x = mascot_right
+
+            # --- Align NAME right edge to mascot right edge ---
+            name_x = mascot_right - name_w
+
+            p.setFont(self.introtitle_font)
+            p.drawText(name_x, 880, name_w + 2, 35, Qt.AlignLeft | Qt.AlignVCenter, name)
+
+            # --- Rank to the LEFT of name ---
+            if rank:
+                rank_x = name_x - rank_w - gap
+                p.setFont(self.introrank_font)
+                p.drawText(rank_x, 880, rank_w, 35, Qt.AlignLeft | Qt.AlignVCenter, rank)
+
+            # --- Draw mascot ---
+            if mascot:
+                p.setFont(self.introtitle_font)
+                p.drawText(mascot_x, 928, mascot_w, 30, Qt.AlignRight | Qt.AlignVCenter, mascot)
             logo_x=left_x+295
             logo_y=830
             logo_w=180
@@ -1041,7 +1057,7 @@ class FootballScoreboard(QWidget):
                 self.draw_pod(p, left_x + pod_full_width - curr_pod_width, 985, curr_pod_width, 55, self.state.away_color)
 
             logo_x = left_x + 5
-            logo_y = 968
+            logo_y = 975
             logo_w = 80
             logo_h = 75
             p.save()
@@ -1055,10 +1071,12 @@ class FootballScoreboard(QWidget):
                 opacity = (progress - fade_delay) / (1.0 - fade_delay)
             opacity = min(max(opacity, 0.0), 1.0)
             p.setOpacity(opacity)
+            p.setFont(self.record_font)
+            p.setPen(Qt.white)
             if not (rw == 0 and rl == 0):
-                p.drawText(logo_x + 120, logo_y + 50, 120, 18, Qt.AlignLeft, f"{rw}-{rl}")
+                p.drawText(logo_x + 120, logo_y + 20, 120, 18, Qt.AlignLeft, f"{rw}-{rl}")
             if not (dw == 0 and dl == 0):
-                p.drawText(logo_x + 113, logo_y + 70, 120, 18, Qt.AlignLeft, f"({dw}-{dl})")
+                p.drawText(logo_x + 113, logo_y + 40, 120, 18, Qt.AlignLeft, f"({dw}-{dl})")
             rank, name = self.format_rank_name(self.state.away_rank, self.state.away_name)
             metrics_rank = QFontMetrics(self.rank_font)
             rank_w = metrics_rank.horizontalAdvance(rank) if rank else 0
@@ -1105,10 +1123,12 @@ class FootballScoreboard(QWidget):
                 opacity = (progress - fade_delay) / (1.0 - fade_delay)
             opacity = min(max(opacity, 0.0), 1.0)
             p.setOpacity(opacity)
+            p.setFont(self.record_font)
+            p.setPen(Qt.white)
             if not (hw == 0 and hl == 0):
-                p.drawText(logo_x - 154, logo_y + 50, 120, 18, Qt.AlignRight, f"{hw}-{hl}")
+                p.drawText(logo_x - 154, logo_y + 20, 120, 18, Qt.AlignRight, f"{hw}-{hl}")
             if not (hdw == 0 and hdl == 0):
-                p.drawText(logo_x - 147, logo_y + 70, 120, 18, Qt.AlignRight, f"({hdw}-{hdl})")
+                p.drawText(logo_x - 147, logo_y + 40, 120, 18, Qt.AlignRight, f"({hdw}-{hdl})")
             rank, name = self.format_rank_name(self.state.home_rank, self.state.home_name)
             metrics_rank = QFontMetrics(self.rank_font)
             rank_w = metrics_rank.horizontalAdvance(rank) if rank else 0
@@ -1173,13 +1193,12 @@ class FootballScoreboard(QWidget):
             p.drawText(cx, cy+40, cw, 60, Qt.AlignCenter, tstring)
             p.setFont(self.period_font)
             p.drawText(cx - 57, cy + 57, cw, 26, Qt.AlignCenter, f"{self.period_text()}")
-            if self.state.play_running:
+            if self.state.play_running and self.show_playclock:
                 p.setFont(self.pc_font)
-            if self.state.playclock <= 10:
-                p.setPen(Qt.red)
-            else:
-                p.setPen(Qt.yellow)
-            if self.show_playclock is True:
+                if self.state.playclock <= 10:
+                    p.setPen(Qt.red)
+                else:
+                    p.setPen(Qt.yellow)
                 rect = QRect(cx + 111, 1005, 100, 22)
                 p.drawText(rect, Qt.AlignCenter, f":{self.state.playclock:02d}")
             p.setOpacity(1.0)
@@ -1281,14 +1300,13 @@ class FootballScoreboard(QWidget):
             p.setFont(self.period_font)
             p.setPen(Qt.white)
             p.drawText(cx-63,cy+37,cw,26,Qt.AlignCenter,f"{self.period_text()}")
-            if self.state.play_running:
+            if self.state.play_running and self.show_playclock:
                 p.setFont(self.pc_font)
-            if self.state.playclock <= 10:
-                p.setPen(Qt.red)
-            else:
-                p.setPen(Qt.yellow)
-            if self.show_playclock is True:
-                rect = QRect(cx + 100, cy+40, 100, 22)
+                if self.state.playclock <= 10:
+                    p.setPen(Qt.red)
+                else:
+                    p.setPen(Qt.yellow)
+                rect = QRect(cx + 100, cy + 40, 100, 22)
                 p.drawText(rect, Qt.AlignCenter, f":{self.state.playclock:02d}")
             rank,name=self.format_rank_name(self.state.home_rank,self.state.home_name)
             p.setFont(self.tdrank_font)
@@ -1408,14 +1426,13 @@ class FootballScoreboard(QWidget):
             p.drawText(cx, cy+20, cw, 60, Qt.AlignCenter, tstring)
             p.setFont(self.period_font)
             p.drawText(cx-63, cy+37, cw, 26, Qt.AlignCenter, f"{self.period_text()}")
-            if self.state.play_running:
+            if self.state.play_running and self.show_playclock:
                 p.setFont(self.pc_font)
-            if self.state.playclock <= 10:
-                p.setPen(Qt.red)
-            else:
-                p.setPen(Qt.yellow)
-            if self.show_playclock is True:
-                rect = QRect(cx + 100, cy+40, 100, 22)
+                if self.state.playclock <= 10:
+                    p.setPen(Qt.red)
+                else:
+                    p.setPen(Qt.yellow)
+                rect = QRect(cx + 100, cy + 40, 100, 22)
                 p.drawText(rect, Qt.AlignCenter, f":{self.state.playclock:02d}")
             rank, name = self.format_rank_name(self.state.away_rank, self.state.away_name)
             p.setFont(self.tdrank_font)
@@ -1478,10 +1495,9 @@ class FootballScoreboard(QWidget):
         hw = self.state.home_record_wins
         hl = self.state.home_record_losses
         hdw = self.state.home_district_wins
-        hdl = self.state.home_district_losses     
+        hdl = self.state.home_district_losses
+        # -- AWAY SECTION -- # 
         if self.state.faway_box_active:
-            p.setFont(self.record_font)
-            p.setPen(Qt.white)
             progress=self.state.faway_box_progress
             full_width=left_w+330
             center_x=left_x-4+full_width//2
@@ -1502,7 +1518,7 @@ class FootballScoreboard(QWidget):
                 self.draw_pod(p, left_x + pod_full_width - curr_pod_width, 985, curr_pod_width, 55, self.state.away_color)
 
             logo_x = left_x + 5
-            logo_y = 948
+            logo_y = 968
             logo_w = 80
             logo_h = 85
             p.save()
@@ -1516,10 +1532,12 @@ class FootballScoreboard(QWidget):
                 opacity = (progress - fade_delay) / (1.0 - fade_delay)
             opacity = min(max(opacity, 0.0), 1.0)
             p.setOpacity(opacity)
+            p.setFont(self.record_font)
+            p.setPen(Qt.white)
             if not (rw == 0 and rl == 0):
-                p.drawText(logo_x + 120, logo_y + 50, 120, 18, Qt.AlignLeft, f"{rw}-{rl}")
+                p.drawText(logo_x + 120, logo_y + 25, 120, 18, Qt.AlignLeft, f"{rw}-{rl}")
             if not (dw == 0 and dl == 0):
-                p.drawText(logo_x + 113, logo_y + 70, 120, 18, Qt.AlignLeft, f"({dw}-{dl})")
+                p.drawText(logo_x + 113, logo_y + 45, 120, 18, Qt.AlignLeft, f"({dw}-{dl})")
             rank, name = self.format_rank_name(self.state.away_rank, self.state.away_name)
             metrics_rank = QFontMetrics(self.rank_font)
             rank_w = metrics_rank.horizontalAdvance(rank) if rank else 0
@@ -1551,13 +1569,13 @@ class FootballScoreboard(QWidget):
                 pod_progress = (progress - pod_start_progress) / (1.0 - pod_start_progress)
                 curr_pod_width = int(pod_full_width * pod_progress)
                 self.draw_hmpod(p, right_x + 255, 985, curr_pod_width, 55, self.state.home_color)
-            logo_x2 = right_x + 280,
-            logo_y2 = 955
+            logo_x2 = right_x + 280
+            logo_y2 = 968
             logo_w2 = 80
             logo_h2 = 85
             p.save()
             self.clip_to_rounded_rect(p, right_x, 985, right_w, 105)
-            self.draw_logo_in_top_rounded_window(p, logo_x2, 955, logo_w2, logo_h2, self.state.home_logo)
+            self.draw_logo_in_top_rounded_window(p, logo_x2, logo_y2, logo_w2, logo_h2, self.state.home_logo)
             p.restore()
             fade_delay = 0.7
             if progress <= fade_delay:
@@ -1566,10 +1584,12 @@ class FootballScoreboard(QWidget):
                 opacity = (progress - fade_delay) / (1.0 - fade_delay)
             opacity = min(max(opacity, 0.0), 1.0)
             p.setOpacity(opacity)
+            p.setFont(self.record_font)
+            p.setPen(Qt.white)
             if not (hw == 0 and hl == 0):
-                p.drawText(logo_x2 - 154, logo_y2 + 50, 120, 18, Qt.AlignRight, f"{hw}-{hl}")
+                p.drawText(logo_x2 - 154, logo_y2 + 25, 120, 18, Qt.AlignRight, f"{hw}-{hl}")
             if not (hdw == 0 and hdl == 0):
-                p.drawText(logo_x2 - 147, logo_y2 + 70, 120, 18, Qt.AlignRight, f"({hdw}-{hdl})")
+                p.drawText(logo_x2 - 147, logo_y2 + 45, 120, 18, Qt.AlignRight, f"({hdw}-{hdl})")
             rank, name = self.format_rank_name(self.state.home_rank, self.state.home_name)
             metrics_rank = QFontMetrics(self.rank_font)
             rank_w = metrics_rank.horizontalAdvance(rank) if rank else 0
@@ -9878,35 +9898,24 @@ QLCDNumber {
             pass
         self.update()
     def add_points(self, pts, team):
-        # Store old scores to detect change
         old_home_pts = self.state.home_pts
         old_away_pts = self.state.away_pts
-
-        # Update scores based on team (still needed for scoreboard logic)
         if team == "home":
             self.state.home_pts = max(0, self.state.home_pts + pts)
         else:
             self.state.away_pts = max(0, self.state.away_pts + pts)
-
-        # Update score boxes
         self.hm_score_box.setValue(self.state.home_pts)
         self.aw_score_box.setValue(self.state.away_pts)
-
-        # Trigger goal animations based on which score increased
         if self.state.home_pts > old_home_pts:
             self.start_home_goal()  # home goal triggered by score change
-
         if self.state.away_pts > old_away_pts:
             self.start_away_goal()  # away goal triggered by score change
-
-        # Refresh scoreboard
         self.repaint_scoreboard()
     def start_home_goal(self):
         self.scoreboard.show_home_goal = True
         self.scoreboard.show_away_goal = False
         self.scoreboard.update()
         QTimer.singleShot(7000, self.end_goal)
-
     def start_away_goal(self):
         self.scoreboard.show_home_goal = False
         self.scoreboard.show_away_goal = True
@@ -9929,29 +9938,17 @@ QLCDNumber {
             pm = pm.scaled(60, 60, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.state.away_logo = pm
             self.repaint_scoreboard()
-
     def load_home_logo(self):
-        path, _ = QFileDialog.getOpenFileName(
-        self,
-        "Open home logo",
-        "",
-        "Images (*.png *.jpg *.jpeg *.bmp *.webp)"
-    )
-
+        path, _ = QFileDialog.getOpenFileName(self,"Open home logo","","Images (*.png *.jpg *.jpeg *.bmp *.webp)")
         if path:
             pm = QPixmap()
             pm.load(path)
-
-        # --- HIGH QUALITY SCALING ---
             pm = pm.scaled(
             60, 100,
             Qt.KeepAspectRatio,
             Qt.SmoothTransformation  # <-- Best quality resampling
         )
-
-        # Make sure it's ARGB32 for blending & clipping correctly
             pm = pm.convertToFormat(QImage.Format_ARGB32)
-
             self.state.home_logo = pm
             self.repaint_scoreboard()
     def set_period(self):
@@ -9964,19 +9961,14 @@ QLCDNumber {
         try:
             m = int(self.min_edit.value())
             s = int(self.sec_edit.value())
-
-        # clamp
             if m < 0:
                 m = 0
             if s < 0:
                 s = 0
             if s > 59:
                 s = s % 60
-
             return m, s
-
         except Exception:
-        # fallback to previous state values
             return self.state.minutes_soccer, self.state.seconds_soccer
     def set_lcd_clock_from_inputs(self):
         try:
@@ -9984,27 +9976,17 @@ QLCDNumber {
             s = int(self.sec_edit.value())
         except Exception:
             return
-
-    # clamp
         if m < 0:
             m = 0
         if s < 0:
             s = 0
         if s > 59:
             s = s % 60
-
-    # update state
         self.state.minutes_soccer = m
         self.state.seconds_soccer = s
-
-    # update LCD
         if hasattr(self, "time_lcd"):
             self.time_lcd.display(f"{m:02d}:{s:02d}")
-
-    # optional scoreboard redraw
         self.repaint_scoreboard()
-
-
     def start_clock(self):
         m, s = self._read_clock_inputs()
         # store to state and start timer
@@ -10014,13 +9996,11 @@ QLCDNumber {
             self.timer.start()
         self.state.game_running = True
         self.repaint_scoreboard()
-
     def stop_clock(self):
         if self.timer.isActive():
             self.timer.stop()
         self.state.game_running = False
         self.repaint_scoreboard()
-
     def reset_clock(self):
         self.state.minutes_soccer = 40
         self.state.seconds_soccer = 0
@@ -10034,7 +10014,6 @@ QLCDNumber {
             self.sec_edit.setValue(self.state.seconds_soccer)
 
         self.repaint_scoreboard()
-
     def game_tick(self):
         total = self.state.minutes_soccer * 60 + self.state.seconds_soccer
         if total <= 0:
@@ -10050,14 +10029,11 @@ QLCDNumber {
         total -= 1
         self.state.minutes_soccer = total // 60
         self.state.seconds_soccer = total % 60
-
-    # update LCD + fields
         self.time_lcd.display(f"{self.state.minutes_soccer}:{self.state.seconds_soccer:02d}")
         self.min_edit.setValue(self.state.minutes_soccer)
         self.sec_edit.setValue(self.state.seconds_soccer)
 
         self.repaint_scoreboard()
-    # ----------------- Away/Home setup helper methods -----------------
     def pick_away_color_from_setup(self):
         c = QColorDialog.getColor(self.state.away_color, self, "Pick Away Color")
         if c.isValid():
@@ -10089,20 +10065,17 @@ QLCDNumber {
             self.repaint_scoreboard()
     def draw_rect(self, p, x, y, w, h, color):
         shadow = QColor(0, 0, 0, 120)
-
         for i in range(8):
             alpha = 120 - (i * 15)
             shadow.setAlpha(max(alpha, 0))
             p.setBrush(shadow)
             p.drawRect(int(x + 6 + i), int(y + 6 + i), int(w - i*2), int(h - i*2))
-
         p.setBrush(color)
         p.drawRect(int(x), int(y), int(w), int(h))
     def submit_away_setup(self):
         self.state.away_name = self.away_setup_name.text().strip() or self.state.away_name
         self.state.away_rank = self.away_rank_edit.text().strip() or self.state.away_rank
         self.state.away_mascot = self.away_setup_mascot.text().strip() or self.state.away_mascot
-
         try:
             self.state.away_record_wins = int(self.away_record_wins_edit.text().strip())
         except:
@@ -10119,9 +10092,7 @@ QLCDNumber {
             self.state.away_district_losses = int(self.away_district_losses_edit.text().strip())
         except:
             pass
-
         self.repaint_scoreboard()
-
     def submit_home_setup(self):
         self.state.home_name = self.home_setup_name.text().strip() or self.state.home_name
         self.state.home_rank = self.home_rank_edit.text().strip() or self.state.home_rank
@@ -10142,99 +10113,70 @@ QLCDNumber {
             self.state.home_district_losses = int(self.home_district_losses_edit.text().strip())
         except Exception:
             pass
-
         self.repaint_scoreboard()
         self.serial_thread = None
 class ProgramSelector(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Select Streaming Program")
-
         layout = QVBoxLayout(self)
-
-        # Combo box for program selection
         self.combo = QComboBox()
         self.combo.addItems(["OBS/Streamlabs", "vMix"])
         layout.addWidget(self.combo)
-
-        # OK button
         btn = QPushButton("OK")
         btn.clicked.connect(self.on_ok)
         layout.addWidget(btn)
-
-        # Store selection
         self.selection = None
-
     def on_ok(self):
-        # Save the selected program
         self.selection = self.combo.currentText()
         self.accept()
 class WindowModeSelector(QDialog):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Window Mode")
-
         layout = QVBoxLayout(self)
-
         self.combo = QComboBox()
         self.combo.addItem("Frameless (Broadcast Overlay)")
         self.combo.addItem("Framed (Normal Window)")
-
         layout.addWidget(QLabel("Select window style:"))
         layout.addWidget(self.combo)
-
         ok_btn = QPushButton("OK")
         ok_btn.clicked.connect(self.accept)
         layout.addWidget(ok_btn)
-
     def get_mode(self):
         return "frameless" if self.combo.currentIndex() == 0 else "framed"
-
 class ScoreboardSelector(QDialog):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Select Scoreboard")
-
         layout = QVBoxLayout(self)
-
-        # --- Drop-down for scoreboard selection ---
         self.combo = QComboBox()
         self.combo.addItems(["Football", "Basketball", "Volleyball", "Soccer"])
         self.combo.setCurrentIndex(-1)  # No default selected
         layout.addWidget(self.combo)
-
-        # --- OK button ---
         btn = QPushButton("OK")
         btn.clicked.connect(self.on_ok)
         layout.addWidget(btn)
-
         self.selection = None
-
     def on_ok(self):
-        # Validate selection
         if self.combo.currentIndex() == -1:
             QMessageBox.critical(self, "Error", "You must select a scoreboard.")
             return  # Don't close
         self.selection = self.combo.currentText()
         self.accept()
-
     def get_selection(self):
         return self.selection
 class ScoreboardParser:
     def parse(self, raw_bytes):
         raise NotImplementedError
-
 class DaktronicsParser(ScoreboardParser):
     def parse(self, raw_bytes):
         try:
             txt = raw_bytes.decode(errors="ignore").strip()
             txt = txt.strip('\x02\x03')
             if len(txt) < 14: return None
-
             away = int(txt[7:9])
             home = int(txt[9:11])
-
-            # Parse clock with optional tenths: MM:SS.t
             clock = txt[0:6]  # e.g., "12:34.5"
             if '.' in clock:
                 mm_ss, t = clock.split('.')
@@ -10243,26 +10185,13 @@ class DaktronicsParser(ScoreboardParser):
             else:
                 mm, ss = clock.split(':')
                 tenths = 0
-
             period = int(txt[11])
             poss = 'home' if 'L' in txt else 'away' if 'R' in txt else None
             home_to = int(txt[-2]) if txt[-2].isdigit() else 0
             away_to = int(txt[-1]) if txt[-1].isdigit() else 0
-
-            return {
-                'away_pts': away,
-                'home_pts': home,
-                'minutes': int(mm),
-                'seconds': int(ss),
-                'tenths': tenths,
-                'period': period,
-                'possession': poss,
-                'home_to': home_to,
-                'away_to': away_to
-            }
+            return {'away_pts': away,'home_pts': home,'minutes': int(mm),'seconds': int(ss),'tenths': tenths,'period': period,'possession': poss,'home_to': home_to,'away_to': away_to}
         except:
             return None
-
 class NevcoParser(ScoreboardParser):
     def parse(self, raw_bytes):
         try:
@@ -10274,7 +10203,6 @@ class NevcoParser(ScoreboardParser):
             return {'away_pts':away,'home_pts':home,'minutes':mm,'seconds':ss,'period':period,'possession':poss,'home_to':home_to,'away_to':away_to}
         except:
             return None
-
 class FairPlayParser(ScoreboardParser):
     def parse(self, raw_bytes):
         try:
@@ -10286,7 +10214,6 @@ class FairPlayParser(ScoreboardParser):
             return {'away_pts':away,'home_pts':home,'minutes':mm,'seconds':ss,'period':period,'possession':poss,'home_to':home_to,'away_to':away_to}
         except:
             return None
-
 class ScoreboardReader(threading.Thread):
     def __init__(self,state,parsers=None):
         super().__init__(daemon=True)
@@ -10295,7 +10222,6 @@ class ScoreboardReader(threading.Thread):
         self.ser=None
         self.parser=None
         self.parsers=parsers or [DaktronicsParser(),NevcoParser(),FairPlayParser()]
-
     def auto_detect_port(self):
         ports=serial.tools.list_ports.comports()
         for port in ports:
@@ -10304,26 +10230,22 @@ class ScoreboardReader(threading.Thread):
                 return port.device
             except: continue
         return None
-
     def open_port(self):
         port=getattr(self.state,"serial_port",None) or self.auto_detect_port()
         if not port: self.running=False; return
         try: self.ser=serial.Serial(port,self.state.serial_baud,timeout=0.05); self.running=True
         except: self.running=False
-
     def stop(self):
         self.running=False
         if self.ser:
             try: self.ser.close()
             except: pass
-
     def detect_parser(self,msg):
         for p in self.parsers:
             try:
                 if p.parse(msg): return p
             except: continue
         return None
-
     def run(self):
         self.open_port()
         if not self.running: return
@@ -10343,7 +10265,6 @@ class ScoreboardReader(threading.Thread):
                     parsed=self.parser.parse(msg)
                     if parsed: self.update_state(parsed)
             except: time.sleep(0.2)
-
     def update_state(self,data):
         self.state.away_pts = data['away_pts']
         self.state.home_pts = data['home_pts']
@@ -10353,44 +10274,28 @@ class ScoreboardReader(threading.Thread):
         self.state.possession = data['possession']
         self.state.home_timeouts = data.get('home_to', self.state.home_timeouts)
         self.state.away_timeouts = data.get('away_to', self.state.away_timeouts)
-
-        # Mirror to basketball state if needed
         self.state.minutes_basketball = data['minutes']
         self.state.seconds_basketball = data['seconds']
         self.state.tenths_basketball = data.get('tenths', 0)
-
-        # UI update
         try: ui_updater.refresh.emit()
         except: pass
 def main():
     app = QApplication(sys.argv)
-
-    # --- Run update check ---
     check_for_updates()  
-
-    # --- Window mode selection ---
     window_mode_dialog = WindowModeSelector()
     if window_mode_dialog.exec() != QDialog.Accepted:
         sys.exit(0)
     window_mode = window_mode_dialog.get_mode()
-
-    # --- Program selector (OBS/Streamlabs or vMix) ---
     program_dialog = ProgramSelector()
     if program_dialog.exec() != QDialog.Accepted:
         sys.exit(0)
     program = program_dialog.selection
     mode = "transparent" if program == "OBS/Streamlabs" else "keyable"
-
-    # --- Scoreboard selector (Football, Basketball, etc.) ---
     selector = ScoreboardSelector()
     if selector.exec() != QDialog.Accepted:
         sys.exit(0)
     sport = selector.get_selection()
-
-    # --- Shared state ---
     state = ScoreState()
-
-    # --- Map sport to scoreboard + control classes ---
     if sport == "Football":
         sb_class = FootballScoreboard
         ctl_class = FootballControl
@@ -10405,42 +10310,25 @@ def main():
         ctl_class = SoccerControl
     else:
         raise ValueError("Unknown sport selected!")
-
-    # --- Instantiate scoreboard (pass state + mode) ---
     scoreboard = sb_class(state, mode=mode)
-
-    # --- Main scoreboard window ---
     sb_win = QMainWindow()
     sb_win.setCentralWidget(scoreboard)
-
-    # --- Window flags ---
     flags = Qt.Window
     if window_mode == "frameless":
         flags |= Qt.FramelessWindowHint
     else:
         flags |= Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint
     sb_win.setWindowFlags(flags)
-
-    # --- Set the icon for taskbar and Alt+Tab ---
     sb_win.setWindowIcon(QIcon("scorebug.ico"))      # main window
     scoreboard.setWindowIcon(QIcon("scorebug.ico"))  # scoreboard widget itself
-
-    # --- Transparent background for OBS ---
     if mode == "transparent":
         sb_win.setAttribute(Qt.WA_TranslucentBackground)
-
-    # --- Right-click menu ---
     sb_win.mousePressEvent = lambda event: (
         QMenu().addAction("Close", sb_win.close).exec(event.globalPosition().toPoint())
     ) if event.button() == Qt.RightButton else None
-
     sb_win.show()
-
-    # --- Instantiate control window ---
     control = ctl_class(state, scoreboard)
     control.show()
-
     sys.exit(app.exec())
-
 if __name__ == "__main__":
     main()
