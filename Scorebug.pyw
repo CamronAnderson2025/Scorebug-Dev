@@ -32,7 +32,7 @@ from PySide6.QtGui import ( QAction,
 )
 os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"
 os.environ["QT_SCALE_FACTOR"] = "1"
-current_version = "2.3.0"
+current_version = "2.3.1"
 required_update = True
 version_url = "https://raw.githubusercontent.com/CamronAnderson2025/Offical-Scorebug/main/version.txt"
 download_url = "https://github.com/CamronAnderson2025/Offical-Scorebug/releases"
