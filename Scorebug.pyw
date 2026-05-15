@@ -32,10 +32,10 @@ from PySide6.QtGui import ( QAction,
 )
 os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"
 os.environ["QT_SCALE_FACTOR"] = "1"
-current_version = "2.4.0"
+current_version = "2.4.2"
 required_update = True
 version_url = "https://raw.githubusercontent.com/CamronAnderson2025/Offical-Scorebug/main/version.txt"
-download_url = "https://smithvillelivestre.wixsite.com/smn-sports/download"
+download_url = "https://smnsportslive.org/download"
 class FlashingButton(QPushButton):
     def __init__(self, text):
         super().__init__(text)
@@ -1527,7 +1527,7 @@ class FootballScoreboard(QWidget):
             logo_w = 80
             logo_h = 85
             p.save()
-            self.clip_to_rounded_rect(p, left_x, 985, left_w - 5, 105)
+            self.clip_to_rounded_rect(p, left_x, 985, left_w - 5, 55)
             self.draw_logo_in_top_rounded_window(p, logo_x, logo_y, logo_w, logo_h, self.state.away_logo)
             p.restore()
             fade_delay = 0.7
@@ -1579,7 +1579,7 @@ class FootballScoreboard(QWidget):
             logo_w2 = 80
             logo_h2 = 85
             p.save()
-            self.clip_to_rounded_rect(p, right_x, 985, right_w, 105)
+            self.clip_to_rounded_rect(p, right_x, 985, right_w, 55)
             self.draw_logo_in_top_rounded_window(p, logo_x2, logo_y2, logo_w2, logo_h2, self.state.home_logo)
             p.restore()
             fade_delay = 0.7
@@ -6182,6 +6182,135 @@ class SoccerScoreboard(QWidget):
             self._drag_pos = global_pos
     def mouseReleaseEvent(self, event):
         self._drag_pos = None
+
+class BaseballSoftballScoreboard(QWidget):
+    def __init__(self, state: ScoreState, mode="transparent", parent=None):
+        super().__init__(parent)
+        self.state = state
+        self.mode = mode
+        self.flash_on = False
+        self.show_baseballsoftball_intro = False
+        self.show_baseballsoftball_breakboard = False
+        self.show_baseballsoftball_scorebug = True 
+        screen = QApplication.primaryScreen()
+        dpi_scale = screen.devicePixelRatio()
+        self.setFixedSize(int(1920*dpi_scale), int(1080*dpi_scale))
+        if self.mode == "transparent":
+            self.setAttribute(Qt.WA_TranslucentBackground)
+        else:
+            self.bg_color = QColor(255, 0, 255)  # green chroma key for vMix
+        self.setAutoFillBackground(False)
+
+        # fonts
+        self.sets_font = QFont("College", 22, QFont.Bold)
+        self.title_font = QFont("BigNoodleTitling", 20, QFont.Bold)
+        self.timer_font = QFont("College", 30, QFont.Bold)
+        self.setNumber_font = QFont("College", 18, QFont.Bold)
+        self.set_font = QFont("College", 18, QFont.Bold)
+        self.score_font = QFont("College", 25, QFont.Bold)
+        self.record_font = QFont("College", 12, QFont.Bold)
+        self.introupper_font = QFont("BigNoodleTitling", 25, QFont.Bold)
+        self.introtitle_font = QFont("College", 30, QFont.Bold)
+        self.introupper1_font = QFont("BigNoodleTitling", 25) 
+        self.introlower_font = QFont("BigNoodleTitling", 20)   
+        self.introrank_font = QFont("BigNoodleTitling", 30)
+        self.introschool_font = QFont("BigNoodleTitling", 30, QFont.Bold)
+        self.introcity_font = QFont("BigNoodleTitling", 25)
+        self.bbtimer_font = QFont("Legacy", 15)
+        self.bbperiod_font = QFont("Legacy", 15)
+        self.final_font = QFont("BigNoodleTitling", 30, QFont.Bold)
+        self.bbscore_font = QFont("Octin Sports", 55, QFont.Bold)
+        self.event_font = QFont("Legacy", 12, QFont.Bold)
+        self.introrecord_font = QFont("College", 24, QFont.Bold)
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
+        w = self.width()
+        h = self.height()
+        if self.mode == "keyable":
+            p.fillRect(self.rect(), self.bg_color)
+        if self.show_baseballsoftball_intro:
+            self.draw_baseballsoftball_intro(p)
+        if self.show_baseballsoftball_scorebug:
+            self.draw_baseballsoftball_scorebug(p)
+        if self.show_baseballsoftball_breakboard:
+            self.draw_baseballsoftball_breakboard(p)
+        if self.show_baseballsoftball_final:
+            self.draw_baseballsoftball_final(p)
+            return
+    def draw_baseballsoftball_intro(self, p):
+        pass
+    def draw_baseballsoftball_breakboard(self, p):
+        pass
+    def draw_baseballsoftball_scorebug(self, p):
+        pass
+    def draw_baseballsoftball_final(self, p):
+        pass
+class HockeyScoreboard(QWidget):
+    def __init__(self, state: ScoreState, mode="transparent", parent=None):
+        super().__init__(parent)
+        self.state = state
+        self.mode = mode
+        self.flash_on = False
+        self.show_hockey_intro = False
+        self.show_hockey_breakboard = False
+        self.show_hockey_scorebug = True 
+        self.show_hockey_final = False
+        screen = QApplication.primaryScreen()
+        dpi_scale = screen.devicePixelRatio()
+        self.setFixedSize(int(1920*dpi_scale), int(1080*dpi_scale))
+        if self.mode == "transparent":
+            self.setAttribute(Qt.WA_TranslucentBackground)
+        else:
+            self.bg_color = QColor(255, 0, 255)  # green chroma key for vMix
+        self.setAutoFillBackground(False)
+
+        # fonts
+        self.sets_font = QFont("College", 22, QFont.Bold)
+        self.title_font = QFont("BigNoodleTitling", 20, QFont.Bold)
+        self.timer_font = QFont("College", 30, QFont.Bold)
+        self.setNumber_font = QFont("College", 18, QFont.Bold)
+        self.set_font = QFont("College", 18, QFont.Bold)
+        self.score_font = QFont("College", 25, QFont.Bold)
+        self.record_font = QFont("College", 12, QFont.Bold)
+        self.introupper_font = QFont("BigNoodleTitling", 25, QFont.Bold)
+        self.introtitle_font = QFont("College", 30, QFont.Bold)
+        self.introupper1_font = QFont("BigNoodleTitling", 25) 
+        self.introlower_font = QFont("BigNoodleTitling", 20)   
+        self.introrank_font = QFont("BigNoodleTitling", 30)
+        self.introschool_font = QFont("BigNoodleTitling", 30, QFont.Bold)
+        self.introcity_font = QFont("BigNoodleTitling", 25)
+        self.bbtimer_font = QFont("Legacy", 15)
+        self.bbperiod_font = QFont("Legacy", 15)
+        self.final_font = QFont("BigNoodleTitling", 30, QFont.Bold)
+        self.bbscore_font = QFont("Octin Sports", 55, QFont.Bold)
+        self.event_font = QFont("Legacy", 12, QFont.Bold)
+        self.introrecord_font = QFont("College", 24, QFont.Bold)
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
+        w = self.width()
+        h = self.height()
+        if self.mode == "keyable":
+            p.fillRect(self.rect(), self.bg_color)
+        if self.show_hockey_intro:
+            self.draw_hockey_intro(p)
+        if self.show_hockey_scorebug:
+            self.draw_hockey_scorebug(p)
+        if self.show_hockey_breakboard:
+            self.draw_hockey_breakboard(p)
+        if self.show_hockey_final:
+            self.draw_hockey_final(p)
+
+            return
+    def draw_hockey_intro(self, p):
+        pass
+    def draw_hockey_breakboard(self, p):
+        pass
+    def draw_hockey_scorebug(self, p):
+        pass
+    def draw_hockey_final(self, p):
+        pass
 # ---------- Control window ----------
 class FootballControl(QMainWindow):
     def __init__(self, state: ScoreState, scoreboard: FootballScoreboard):
@@ -7617,10 +7746,20 @@ class FootballControl(QMainWindow):
         self.state.minutes = 12
         self.state.seconds = 0
 
+        # Reset LCD display
         if hasattr(self, "time_lcd"):
             self.time_lcd.display("12:00")
 
+        # Reset spin boxes
+        if hasattr(self, "min_edit"):
+            self.min_edit.setValue(12)
+
+        if hasattr(self, "sec_edit"):
+            self.sec_edit.setValue(0)
+
         self.repaint_scoreboard()
+
+      
 
 
     def start_play_clock(self):
@@ -9295,8 +9434,20 @@ class BasketballControl(QMainWindow):
         self.state.minutes_basketball = 8
         self.state.seconds_basketball = 0
         self.state.tenths_basketball = 0
+
+        # Reset LCD
         if hasattr(self, "time_lcd"):
             self.time_lcd.display("08:00")
+
+        # Reset spin boxes / inputs
+        if hasattr(self, "min_edit"):
+            self.min_edit.setValue(8)
+
+        if hasattr(self, "sec_edit"):
+            self.sec_edit.setValue(0)
+
+        if hasattr(self, "tenth_edit"):
+            self.tenth_edit.setValue(0)
 
         self.repaint_scoreboard()
 
@@ -10932,13 +11083,16 @@ QLCDNumber {
         self.state.minutes_soccer = 40
         self.state.seconds_soccer = 0
 
+        # Reset LCD
         if hasattr(self, "time_lcd"):
             self.time_lcd.display("40:00")
 
+        # Reset spin boxes
         if hasattr(self, "min_edit"):
-            self.min_edit.setValue(self.state.minutes_soccer)
+            self.min_edit.setValue(40)
+
         if hasattr(self, "sec_edit"):
-            self.sec_edit.setValue(self.state.seconds_soccer)
+            self.sec_edit.setValue(0)
 
         self.repaint_scoreboard()
     def game_tick(self):
@@ -11042,6 +11196,10 @@ QLCDNumber {
             pass
         self.repaint_scoreboard()
         self.serial_thread = None
+class BaseballSoftballControl(QMainWindow):
+    pass
+class HockeyControl(QMainWindow):
+    pass
 class ProgramSelector(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -11235,6 +11393,12 @@ def main():
     elif sport == "Soccer":
         sb_class = SoccerScoreboard
         ctl_class = SoccerControl
+    elif sport == "Baseball/Softball (WIP)":
+        sb_class = BaseballSoftballScoreboard
+        ctl_class = BaseballSoftballControl
+    elif sport == "Hockey (WIP)":
+        sb_class = HockeyScoreboard
+        ctl_class = HockeyControl
     else:
         raise ValueError("Unknown sport selected!")
     scoreboard = sb_class(state, mode=mode)
