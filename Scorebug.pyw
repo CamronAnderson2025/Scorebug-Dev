@@ -25,15 +25,15 @@ from PySide6.QtWidgets import ( QDialogButtonBox,QListWidget,QListWidgetItem,
     QGraphicsScene,QToolButton, QGraphicsPolygonItem, QGraphicsBlurEffect, QMenu, QInputDialog, QSizePolicy, QGroupBox, QGridLayout, QVBoxLayout
 )
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest
-from PySide6.QtCore import Qt, QTimer, QRect, QPointF, QRectF, QObject, Signal, QUrl, Property, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import ( QAction,
+from PySide6.QtCore import Qt, QPoint, QTimer, QRect, QPoint, QPointF, QRectF, QObject, Signal, QUrl, Property, QPropertyAnimation, QEasingCurve
+from PySide6.QtGui import ( QAction, QPolygon, 
     QPainter, QPolygonF, QColor, QIntValidator, QFont, QFontMetrics, QPixmap, QBrush,
     QPen, QLinearGradient, QPainterPath, QRadialGradient, QImage, QTextOption, QFontDatabase, QFont, QIcon
 )
 os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "0"
 os.environ["QT_SCALE_FACTOR"] = "1"
-current_version = "2.4.2"
-required_update = True
+current_version = "3.0.0"
+required_update = False
 version_url = "https://raw.githubusercontent.com/CamronAnderson2025/Offical-Scorebug/main/version.txt"
 download_url = "https://smnsportslive.org/download"
 class FlashingButton(QPushButton):
@@ -135,8 +135,856 @@ def check_for_updates():
                     sys.exit(0)  # Close old app if update is required
     except Exception:
         pass
+class ScoreboardToolkit:
+    def load_center_logo_from_setup(self):
+        path,_=QFileDialog.getOpenFileName(self,"Open center logo","","Images (*.png *.jpg *.bmp)")
+        if path:
+            pm=QPixmap(path).scaled(300,300,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation)
+            self.state.center_logo=pm
+            self.repaint_scoreboard()
+    def draw_outs_circle(self, p, x, y, r):
+        p.save()
 
+        color = QColor("#ff0000") if self.outs_changed else QColor("#1c1c1c")
 
+        p.setPen(QPen(QColor("#ffffff"), 2))
+        p.setBrush(QBrush(color))
+
+        p.drawEllipse(x, y, r, r)
+
+        p.restore()
+    def load_center_logo(self):
+        path,_=QFileDialog.getOpenFileName(self,"Open center logo","","Images (*.png *.jpg *.bmp)")
+        if path:
+            pm=QPixmap(path).scaled(60,60,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation)
+            self.state.center_logo=pm
+            self.repaint_scoreboard()
+
+    def draw_basketball_timeout_rects(self,p:QPainter,x,y,remaining,w:int=3,h:int=3,spacing:int=3):
+        remaining=max(0,min(5,int(remaining)))
+        p.setPen(Qt.PenStyle.NoPen)
+        radius=min(w,h)*2
+        for i in range(5):
+            cy=y+i*(radius+spacing)
+            filled=i<remaining
+            p.setBrush(QColor("white") if filled else QColor(255,255,255,60))
+            p.drawEllipse(QRect(int(x),int(cy),int(radius),int(radius)))
+
+    def draw_logo_in_top_rounded_window(self,p,x,y,w,h,logo,radius=12):
+        if logo is None or not isinstance(logo,QPixmap) or logo.isNull():return
+        p.save()
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform,True)
+        path=QPainterPath()
+        path.moveTo(x+radius,y)
+        path.lineTo(x+w-radius,y)
+        path.quadTo(x+w,y,x+w,y+radius)
+        path.lineTo(x+w,y+h)
+        path.lineTo(x,y+h)
+        path.lineTo(x,y+radius)
+        path.quadTo(x,y,x+radius,y)
+        p.setClipPath(path,Qt.ClipOperation.IntersectClip)
+        scaled=logo.scaled(w,9999,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation)
+        lx=x+(w-scaled.width())//2
+        ly=y+(h-scaled.height())//2
+        p.drawPixmap(lx,ly,scaled)
+        p.restore()
+
+    def clip_to_rounded_rect(self,p,x,y,w,h,radius=12):
+        path=QPainterPath()
+        path.addRoundedRect(QRectF(x,y,w,h),radius,radius)
+        p.setClipPath(path,Qt.ClipOperation.IntersectClip)
+
+    def clip_to_rect(self,p,x,y,w,h):
+        path=QPainterPath()
+        path.addRect(QRectF(x,y,w,h))
+        p.setClipPath(path)
+
+    def draw_rect(self,p,x,y,w,h,color):
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(color)
+        p.drawRect(int(x),int(y),int(w),int(h))
+
+    def draw_diamond(self, p, x, y, size, color):
+        points = [
+            QPoint(int(x), int(y - size)),
+            QPoint(int(x + size), int(y)),
+            QPoint(int(x), int(y + size)),
+            QPoint(int(x - size), int(y))
+        ]
+
+        p.setPen(QPen(QColor("#ffffff"), 2))  # white outline
+        p.setBrush(color)                     # fill color
+        p.drawPolygon(QPolygon(points))
+
+    def draw_normal_rect(self,p:QPainter,x,y,w,h,color:QColor):
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(color))
+        p.drawRect(QRect(int(x),int(y),int(w),int(h)))
+    def draw_line(self, p: QPainter, x1, y1, x2, y2, color: QColor, thickness=1):
+        pen = QPen(color)
+        pen.setWidth(thickness)
+        p.setPen(pen)
+        p.drawLine(int(x1), int(y1), int(x2), int(y2))
+    def draw_transparentnormal_rect(self,p:QPainter,x,y,w,h,color:QColor):
+        p.setPen(Qt.PenStyle.NoPen)
+        c=QColor(color)
+        c.setAlpha(240)
+        p.setBrush(QBrush(c))
+        p.drawRect(QRect(int(x),int(y),int(w),int(h)))
+
+    def draw_rect_transparent(self,p,x,y,w,h,color):
+        fill=QColor(color)
+        fill.setAlpha(120)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(fill)
+        p.drawRect(int(x),int(y),int(w),int(h))
+
+    def draw_rect_shadow(self,p,x,y,w,h,color):
+        shadow=QColor(255,255,255,140)
+        for i in range(6):
+            shadow.setAlpha(80-i*12)
+            p.setBrush(shadow)
+            p.drawRect(int(x+4+i),int(y+4+i),int(w-2*i),int(h-2*i))
+        p.setBrush(color)
+        p.drawRect(int(x),int(y),int(w),int(h))
+
+    def draw_fully_rounded_rect(self,p,x,y,w,h,color:QColor,radius:int=12):
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(color))
+        p.drawRoundedRect(QRect(int(x),int(y),int(w),int(h)),radius,radius)
+
+    def draw_top_rounded_rect(self,p,x,y,w,h,color:QColor,radius:int=12):
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(color)
+        path=QPainterPath()
+        path.moveTo(x+radius,y)
+        path.lineTo(x+w-radius,y)
+        path.quadTo(x+w,y,x+w,y+radius)
+        path.lineTo(x+w,y+h)
+        path.lineTo(x,y+h)
+        path.lineTo(x,y+radius)
+        path.quadTo(x,y,x+radius,y)
+        path.closeSubpath()
+        p.drawPath(path)
+
+    def draw_bottom_round_rect(self,p,x,y,w,h,color:QColor,radius:int=12):
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(color)
+        path=QPainterPath()
+        path.moveTo(x,y)
+        path.lineTo(x+w,y)
+        path.lineTo(x+w,y+h-radius)
+        path.quadTo(x+w,y+h,x+w-radius,y+h)
+        path.lineTo(x+radius,y+h)
+        path.quadTo(x,y+h,x,y+h-radius)
+        path.lineTo(x,y)
+        p.drawPath(path)
+
+    def draw_top_flat_rect(self,p,x,y,w,h,color:QColor,radius:int=12):
+        self.draw_bottom_round_rect(p,x,y,w,h,color,radius)
+
+    def draw_leftrounded_rect(self,p,x,y,w,h,color:QColor):
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(color))
+        radius=12
+        path=QPainterPath()
+        path.moveTo(x+radius,y)
+        path.lineTo(x+w,y)
+        path.lineTo(x+w,y+h)
+        path.lineTo(x+radius,y+h)
+        path.quadTo(x,y+h,x,y+h-radius)
+        path.lineTo(x,y+radius)
+        path.quadTo(x,y,x+radius,y)
+        p.drawPath(path)
+
+    def draw_rightrounded_rect(self,p,x,y,w,h,color:QColor):
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(color))
+        radius=12
+        path=QPainterPath()
+        path.moveTo(x,y)
+        path.lineTo(x+w-radius,y)
+        path.quadTo(x+w,y,x+w,y+radius)
+        path.lineTo(x+w,y+h-radius)
+        path.quadTo(x+w,y+h,x+w-radius,y+h)
+        path.lineTo(x,y+h)
+        path.lineTo(x,y)
+        p.drawPath(path)
+
+    def draw_rounded_rect(self,p,x,y,w,h,color:QColor):
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(color))
+        radius=12
+        path=QPainterPath()
+        path.moveTo(x,y)
+        path.lineTo(x+w,y)
+        path.lineTo(x+w,y+h-radius)
+        path.quadTo(x+w,y+h,x+w-radius,y+h)
+        path.lineTo(x+radius,y+h)
+        path.quadTo(x,y+h,x,y+h-radius)
+        path.lineTo(x,y)
+        p.drawPath(path)
+
+    def draw_semitransparent_rounded_rect(self,p,x,y,w,h,color:QColor):
+        c=QColor(color)
+        c.setAlpha(225)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(c))
+        radius=12
+        path=QPainterPath()
+        path.moveTo(x,y)
+        path.lineTo(x+w,y)
+        path.lineTo(x+w,y+h-radius)
+        path.quadTo(x+w,y+h,x+w-radius,y+h)
+        path.lineTo(x+radius,y+h)
+        path.quadTo(x,y+h,x,y+h-radius)
+        path.lineTo(x,y)
+        p.drawPath(path)
+
+    def draw_timerounded_rect(self,p,x,y,w,h,color:QColor):
+        radius=12
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(color))
+        path=QPainterPath()
+        path.moveTo(x,y)
+        path.lineTo(x+w,y)
+        path.lineTo(x+w,y+h-radius)
+        path.quadTo(x+w,y+h,x+w-radius,y+h)
+        path.lineTo(x+radius,y+h)
+        path.quadTo(x,y+h,x,y+h-radius)
+        path.lineTo(x,y)
+        p.drawPath(path)
+
+    def draw_bottom1_rounded_rect(self,p,x,y,w,h,color:QColor,radius:int=7):
+        path=QPainterPath()
+        path.moveTo(x,y)
+        path.lineTo(x+w,y)
+        path.lineTo(x+w,y+h-radius)
+        path.quadTo(x+w,y+h,x+w-radius,y+h)
+        path.lineTo(x+radius,y+h)
+        path.quadTo(x,y+h,x,y+h-radius)
+        path.lineTo(x,y)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(color))
+        p.drawPath(path)
+
+    def draw_bottom2_rounded_rect(self,p,x,y,w,h,color:QColor,radius:int=7):
+        path=QPainterPath()
+        path.moveTo(x+radius,y)
+        path.lineTo(x+w-radius,y)
+        path.quadTo(x+w,y,x+w,y+radius)
+        path.lineTo(x+w,y+h)
+        path.lineTo(x,y+h)
+        path.lineTo(x,y+radius)
+        path.quadTo(x,y,x+radius,y)
+        path.closeSubpath()
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(color))
+        p.drawPath(path)
+
+    def draw_top_right_flat(self,p,x,y,w,h,color:QColor):
+        radius=12
+        path=QPainterPath()
+        path.moveTo(x+radius,y)
+        path.lineTo(x+w,y)
+        path.lineTo(x+w,y+h-radius)
+        path.quadTo(x+w,y+h,x+w-radius,y+h)
+        path.lineTo(x+radius,y+h)
+        path.quadTo(x,y+h,x,y+h-radius)
+        path.lineTo(x,y+radius)
+        path.quadTo(x,y,x+radius,y)
+        path.closeSubpath()
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(color))
+        p.drawPath(path)
+
+    def draw_fully_gradient_rect(self,p,x,y,w,h,color:QColor,radius:int=12):
+        darker=color.darker(225)
+        grad=QLinearGradient(x,y,x+w,y)
+        grad.setColorAt(0.0,color)
+        grad.setColorAt(0.5,darker)
+        grad.setColorAt(1.0,darker)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(grad))
+        p.drawRoundedRect(QRect(int(x),int(y),int(w),int(h)),radius,radius)
+
+    def draw_fully_grounded_rect(self,p,x,y,w,h,radius:int=12):
+        grad=QLinearGradient(x,y,x+w,y)
+        grad.setColorAt(0.0,QColor(0,0,0))
+        grad.setColorAt(0.5,QColor(128,128,128))
+        grad.setColorAt(1.0,QColor(0,0,0))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(grad))
+        p.drawRoundedRect(QRect(int(x),int(y),int(w),int(h)),radius,radius)
+
+    def draw_ffully_rounded_rect(self,p,x,y,w,h,radius:int=10):
+        p.save()
+        p.setPen(Qt.PenStyle.NoPen)
+        grad=QLinearGradient(x,y,x,y+h)
+        grad.setColorAt(0.0,QColor(200,200,200))
+        grad.setColorAt(0.2,QColor(40,40,40))
+        grad.setColorAt(0.8,QColor(40,40,40))
+        grad.setColorAt(1.0,QColor(200,200,200))
+        p.setBrush(QBrush(grad))
+        p.drawRoundedRect(QRect(int(x),int(y),int(w),int(h)),radius,radius)
+        p.restore()
+
+    def draw_transparent_to_black_rect(self,p,x,y,w,h,radius:int=12):
+        grad=QLinearGradient(x,y,x+w,y+h)
+        grad.setColorAt(0.0,QColor(0,0,0,0))
+        grad.setColorAt(0.5,QColor(0,0,0,200))
+        grad.setColorAt(1.0,QColor(0,0,0,255))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(grad))
+        p.drawRoundedRect(QRect(int(x),int(y),int(w),int(h)),radius,radius)
+
+    def draw_flat_segment(self,p,x,y,w,h,left_color:QColor,right_color:QColor):
+        grad=QLinearGradient(x,y,x+w,y)
+        grad.setColorAt(0.0,left_color)
+        grad.setColorAt(1.0,right_color)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(grad))
+        p.drawRect(x,y,w,h)
+
+    def draw_flat_segment_home(self,p,x,y,w,h,left_color:QColor,right_color:QColor):
+        grad=QLinearGradient(x+w,y,x,y)
+        grad.setColorAt(0.0,left_color)
+        grad.setColorAt(1.0,right_color)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(grad))
+        p.drawRect(x,y,w,h)
+
+    def draw_tlteam_gradient_rect(self, p, x, y, w, h, color: QColor):
+        p.save()
+        p.setPen(Qt.PenStyle.NoPen)
+        base = QColor(color)
+        light = QColor(color).lighter(140)
+        grad = QLinearGradient(x, y, x, y + h)
+        grad.setColorAt(0.0, base)
+        grad.setColorAt(1.0, light)
+        path = QPainterPath()
+        radius = 10
+        path.moveTo(x + radius, y)
+        path.lineTo(x + w, y)
+        path.lineTo(x + w, y + h)
+        path.lineTo(x, y + h)
+        path.lineTo(x, y + radius)
+        path.quadTo(x, y, x + radius, y)
+        p.setBrush(QBrush(grad))
+        p.drawPath(path)
+        p.restore()
+    def draw_blteam_gradient_rect(self, p, x, y, w, h, color: QColor):
+        p.save()
+        p.setPen(Qt.PenStyle.NoPen)
+        base = QColor(color)
+        light = QColor(color).lighter(140)
+        grad = QLinearGradient(x, y, x, y + h)
+        grad.setColorAt(0.0, base)
+        grad.setColorAt(1.0, light)
+        path = QPainterPath()
+        radius = 10
+        path.moveTo(x, y)
+        path.lineTo(x + w, y)
+        path.lineTo(x + w, y + h)
+        path.lineTo(x + radius, y + h)
+        path.quadTo(x, y + h, x, y + h - radius)
+        path.lineTo(x, y)
+        p.setBrush(QBrush(grad))
+        p.drawPath(path)
+        p.restore()
+    def draw_out_circle(self,p,x,y,radius,filled:bool):
+        p.save()
+        p.setRenderHint(QPainter.RenderHint.Antialiasing,True)
+        rect=QRectF(x,y,radius*2,radius*2)
+        if filled:
+            p.setBrush(QBrush(QColor("#ff3b3b")))
+        else:
+            p.setBrush(Qt.BrushStyle.NoBrush)
+        pen=QPen(QColor("white"))
+        pen.setWidth(3)
+        p.setPen(pen)
+        p.drawEllipse(rect)
+        p.restore()
+
+    def draw_introround_left(self,p,x,y,w,h,color:QColor,r:int=10):
+        path=QPainterPath()
+        path.moveTo(x+r,y)
+        path.lineTo(x+w,y)
+        path.lineTo(x+w,y+h)
+        path.lineTo(x+r,y+h)
+        path.quadTo(x,y+h,x,y+h-r)
+        path.lineTo(x,y+r)
+        path.quadTo(x,y,x+r,y)
+        p.save()
+        p.setPen(Qt.PenStyle.NoPen)
+        grad=QLinearGradient(x,y,x+w,y)
+        grad.setColorAt(0.0,color.darker(150))
+        grad.setColorAt(0.2,color.darker(175))
+        grad.setColorAt(0.4,color.darker(200))
+        grad.setColorAt(0.5,color.darker(225))
+        grad.setColorAt(0.6,color.darker(250))
+        grad.setColorAt(0.8,QColor(0,0,0))
+        grad.setColorAt(1.0,QColor(0,0,0))
+        p.setBrush(QBrush(grad))
+        p.drawPath(path)
+        p.restore()
+
+    def draw_introround_right(self,p,x,y,w,h,color:QColor,r:int=10):
+        path=QPainterPath()
+        path.moveTo(x,y)
+        path.lineTo(x+w-r,y)
+        path.quadTo(x+w,y,x+w,y+r)
+        path.lineTo(x+w,y+h-r)
+        path.quadTo(x+w,y+h,x+w-r,y+h)
+        path.lineTo(x,y+h)
+        path.lineTo(x,y)
+        p.save()
+        p.setPen(Qt.PenStyle.NoPen)
+        grad=QLinearGradient(x+w,y,x,y)
+        grad.setColorAt(0.0,color.darker(150))
+        grad.setColorAt(0.2,color.darker(175))
+        grad.setColorAt(0.4,color.darker(200))
+        grad.setColorAt(0.5,color.darker(225))
+        grad.setColorAt(0.6,color.darker(250))
+        grad.setColorAt(0.8,QColor(0,0,0))
+        grad.setColorAt(1.0,QColor(0,0,0))
+        p.setBrush(QBrush(grad))
+        p.drawPath(path)
+        p.restore()
+
+    def draw_round_left(self,p,x,y,w,h,color:QColor,r:int=10):
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(color)
+        path=QPainterPath()
+        path.moveTo(x+r,y)
+        path.lineTo(x+w,y)
+        path.lineTo(x+w,y+h)
+        path.lineTo(x+r,y+h)
+        path.quadTo(x,y+h,x,y+h-r)
+        path.lineTo(x,y+r)
+        path.quadTo(x,y,x+r,y)
+        p.drawPath(path)
+
+    def draw_round_right(self,p,x,y,w,h,color:QColor,r:int=10):
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(color)
+        path=QPainterPath()
+        path.moveTo(x,y)
+        path.lineTo(x+w-r,y)
+        path.quadTo(x+w,y,x+w,y+r)
+        path.lineTo(x+w,y+h-r)
+        path.quadTo(x+w,y+h,x+w-r,y+h)
+        path.lineTo(x,y+h)
+        path.lineTo(x,y)
+        p.drawPath(path)
+
+    def draw_away_notch(self,p,x,y,w,h,color:QColor):
+        offset=h*0.25
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(color)
+        path=QPainterPath()
+        path.moveTo(x,y)
+        path.lineTo(x+w,y+offset)
+        path.lineTo(x+w,y+h-offset)
+        path.lineTo(x,y+h)
+        path.closeSubpath()
+        p.drawPath(path)
+
+    def draw_home_notch(self,p,x,y,w,h,color:QColor):
+        offset=h*0.25
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(color)
+        path=QPainterPath()
+        path.moveTo(x+w,y)
+        path.lineTo(x,y+offset)
+        path.lineTo(x,y+h-offset)
+        path.lineTo(x+w,y+h)
+        path.closeSubpath()
+        p.drawPath(path)
+
+    def draw_pod(self,p,x,y,pod_w,h,base_color:QColor):
+        left_r,right_r=10,62
+        path=QPainterPath()
+        path.moveTo(x+left_r,y)
+        path.lineTo(x+pod_w,y)
+        path.lineTo(x+pod_w,y+h-right_r)
+        path.quadTo(x+pod_w,y+h,x+pod_w-right_r,y+h)
+        path.lineTo(x+left_r,y+h)
+        path.quadTo(x,y+h,x,y+h-left_r)
+        path.lineTo(x,y+left_r)
+        path.quadTo(x,y,x+left_r,y)
+        cx,cy,rad=x+pod_w*0.45,y+h*0.20,pod_w*1.2
+        glow=QRadialGradient(cx,cy,rad)
+        glow.setColorAt(0.0,base_color)
+        glow.setColorAt(0.6,base_color)
+        glow.setColorAt(0.85,base_color.lighter(160))
+        glow.setColorAt(1.0,QColor(25,25,25))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(glow))
+        p.drawPath(path)
+        fade=QLinearGradient(x,y,x+pod_w,y)
+        fade.setColorAt(0.0,QColor(0,0,0,0))
+        fade.setColorAt(1.0,QColor(0,0,0,60))
+        p.setBrush(QBrush(fade))
+        p.drawPath(path)
+
+    def draw_hmpod(self,p,x,y,pod_w,h,base_color:QColor):
+        left_r,right_r=62,10
+        path=QPainterPath()
+        path.moveTo(x,y)
+        path.lineTo(x+pod_w-right_r,y)
+        path.quadTo(x+pod_w,y,x+pod_w,y+right_r)
+        path.lineTo(x+pod_w,y+h-right_r)
+        path.quadTo(x+pod_w,y+h,x+pod_w-right_r,y+h)
+        path.lineTo(x+left_r,y+h)
+        path.quadTo(x,y+h,x,y+h-left_r)
+        path.lineTo(x,y)
+        cx,cy,rad=x+pod_w*0.45,y+h*0.20,pod_w*1.2
+        glow=QRadialGradient(cx,cy,rad)
+        glow.setColorAt(0.0,base_color)
+        glow.setColorAt(0.6,base_color)
+        glow.setColorAt(0.85,base_color.lighter(160))
+        glow.setColorAt(1.0,QColor(25,25,25))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(glow))
+        p.drawPath(path)
+
+    def draw_base_bar(self,p,x,y,w,h):
+        r=10
+        path=QPainterPath()
+        path.moveTo(x+r,y)
+        path.lineTo(x+w,y)
+        path.lineTo(x+w,y+h)
+        path.lineTo(x+r,y+h)
+        path.quadTo(x,y+h,x,y+h-r)
+        path.lineTo(x,y+r)
+        path.quadTo(x,y,x+r,y)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(25,25,25))
+        p.drawPath(path)
+
+    def draw_hmbase_bar(self,p,x,y,w,h):
+        r=10
+        path=QPainterPath()
+        path.moveTo(x,y)
+        path.lineTo(x+w-r,y)
+        path.quadTo(x+w,y,x+w,y+r)
+        path.lineTo(x+w,y+h-r)
+        path.quadTo(x+w,y+h,x+w-r,y+h)
+        path.lineTo(x,y+h)
+        path.lineTo(x,y)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(25,25,25))
+        p.drawPath(path)
+
+    def draw_panel_base(self,p,x,y,w,h,color:QColor,thickness:int=5):
+        pen=QPen(color)
+        pen.setWidth(thickness)
+        p.setPen(pen)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawRoundedRect(x,y,w,h,10,10)
+
+    def draw_ppanel_base(self,p,x,y,w,h,color:QColor,thickness:int=3):
+        pen=QPen(color)
+        pen.setWidth(thickness)
+        p.setPen(pen)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawRoundedRect(x,y,w,h,10,10)
+
+    def draw_fpanel_base(self,p,x,y,w,h,color:QColor,thickness:int=2):
+        pen=QPen(color)
+        pen.setWidth(thickness)
+        p.setPen(pen)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawRoundedRect(x,y,w,h,10,10)
+
+    def draw_tdpanel_base(self,p,x,y,w,h,color:QColor,thickness:int=4):
+        pen=QPen(color)
+        pen.setWidth(thickness)
+        p.setPen(pen)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawRoundedRect(x,y,w,h,10,10)
+        shadow=QColor(color)
+        shadow.setAlpha(150)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(shadow)
+        for i in range(1,21):
+            p.drawRoundedRect(x+i,y+i,w-2*i,h-2*i,max(0,10-i),max(0,10-i))
+
+    def draw_panel_glow(self,p,x,y,w,h,color:QColor):
+        radius=10
+        glow_rect=QRectF(x+2,y+2,w-4,h-4)
+        outer=QColor(color).darker(100)
+        inner=QColor(color).lighter(150)
+        cx,cy=glow_rect.left(),glow_rect.center().y()
+        rx,_=glow_rect.right(),glow_rect.center().y()
+        rim=QLinearGradient(cx,cy,rx,cy)
+        for stop in(0.0,0.12,0.20,0.80,0.88,1.0):
+            rim.setColorAt(stop,outer)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(rim)
+        p.drawRoundedRect(glow_rect,radius,radius)
+        fill=QLinearGradient(cx,cy,rx,cy)
+        fill.setColorAt(0.0,outer)
+        fill.setColorAt(0.15,outer)
+        fill.setColorAt(0.5,inner)
+        fill.setColorAt(1.0,inner)
+        p.setBrush(fill)
+        p.drawRoundedRect(glow_rect,radius,radius)
+        bloom=QLinearGradient(glow_rect.center().x(),glow_rect.bottom(),glow_rect.center().x(),glow_rect.top())
+        bloom.setColorAt(0.0,outer)
+        bloom.setColorAt(0.2,outer)
+        bloom.setColorAt(0.45,Qt.GlobalColor.transparent)
+        p.setBrush(bloom)
+        p.drawRoundedRect(glow_rect,radius,radius)
+
+    def draw_inset_border(self,p,x,y,w,h,base_radius:int=12):
+        inset=2
+        rx,ry=x+inset,y+inset
+        rw,rh=w-inset*2,h-inset*2
+        radius=max(1,base_radius-inset)
+        pen=QPen(QColor("#505355"),2)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        p.setPen(pen)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        path=QPainterPath()
+        path.moveTo(rx,ry+radius)
+        path.lineTo(rx,ry+rh-radius)
+        path.quadTo(rx,ry+rh,rx+radius,ry+rh)
+        path.lineTo(rx+rw-radius,ry+rh)
+        path.quadTo(rx+rw,ry+rh,rx+rw,ry+rh-radius)
+        path.lineTo(rx+rw,ry+radius)
+        p.drawPath(path)
+        p.setPen(Qt.PenStyle.NoPen)
+
+    def draw_top_gloss(self,p,x,y,w,h):
+        gloss_h=int(h*0.35)
+        gloss_y=int(y+h*0.12)
+        grad=QLinearGradient(x,gloss_y,x+w,gloss_y)
+        grad.setColorAt(0.0,QColor(255,255,255,0))
+        grad.setColorAt(0.2,QColor(255,255,255,50))
+        grad.setColorAt(0.5,QColor(255,255,255,70))
+        grad.setColorAt(0.8,QColor(255,255,255,50))
+        grad.setColorAt(1.0,QColor(255,255,255,0))
+        p.save()
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(grad))
+        p.drawRect(int(x),gloss_y,int(w),gloss_h)
+        p.restore()
+
+    def draw_horizontal_glow(self,p,x,y,w,h,color:QColor):
+        c0,c1,c2=QColor(color),QColor(color),QColor(color)
+        c0.setAlpha(0)
+        c1.setAlpha(160)
+        c2.setAlpha(0)
+        grad=QLinearGradient(x,y,x+w,y)
+        grad.setColorAt(0.0,c0)
+        grad.setColorAt(0.5,c1)
+        grad.setColorAt(1.0,c2)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(grad))
+        p.drawRoundedRect(x,y,w,h,h/2,h/2)
+
+    def draw_inner_edge_glow(self,p,x,y,w,h,color:QColor):
+        img=QImage(w,h,QImage.Format.Format_ARGB32_Premultiplied)
+        img.fill(Qt.GlobalColor.transparent)
+        off=QPainter(img)
+        off.setRenderHint(QPainter.RenderHint.Antialiasing,True)
+        r=h*0.22
+        clip=QPainterPath()
+        clip.addRoundedRect(0,0,w,h,r,r)
+        off.setClipPath(clip)
+        grad=QLinearGradient(0,0,w,0)
+        grad.setColorAt(0.0,color)
+        grad.setColorAt(0.28,QColor(255,255,255))
+        grad.setColorAt(0.55,QColor(255,255,255,0))
+        grad.setColorAt(1.0,QColor(0,0,0,0))
+        off.setPen(Qt.PenStyle.NoPen)
+        off.setBrush(grad)
+        strip_h=int(h*0.45)
+        off.drawRect(0,(h-strip_h)//2,w,strip_h)
+        off.end()
+        blurred=self._blur_image(img,w,h,radius=10)
+        p.drawImage(x,y,blurred)
+
+    def draw_timeout_rects(self,p:QPainter,x,y,remaining,max_count:int=3,align:str="right",w:int=21,h:int=3,spacing:int=7):
+        remaining=max(0,min(max_count,int(remaining)))
+        p.setPen(Qt.PenStyle.NoPen)
+        for i in range(max_count):
+            rect_x=x+i*(w+spacing)
+            if align=="left":
+                filled=i<remaining
+            else:
+                filled=(max_count-1-i)<remaining
+            p.setBrush(QColor("white") if filled else QColor(255,255,255,60))
+            p.drawRoundedRect(QRect(int(rect_x),int(y),int(w),int(h)),1,1)
+
+    def draw_bottom_event_text(self,p,x,y,text,width:int=640):
+        if not text:return
+        p.setFont(self.event_font)
+        p.setPen(Qt.GlobalColor.white)
+        p.drawText(QRect(x,y,width,22),Qt.AlignmentFlag.AlignCenter,text)
+
+    def draw_upper_event_text(self,p,x,y,text):
+        if not text:return
+        p.setFont(self.introupper_font)
+        p.setPen(Qt.GlobalColor.white)
+        p.drawText(QRect(x,y,640,42),Qt.AlignmentFlag.AlignCenter,text)
+
+    def draw_event_text(self,p,x,y,text):
+        if not text:return
+        p.setFont(self.record_font)
+        p.setPen(Qt.GlobalColor.white)
+        p.drawText(QRect(x,y,240,22),Qt.AlignmentFlag.AlignVCenter|Qt.AlignmentFlag.AlignHCenter,text)
+
+    def draw_bbevent_text(self,p,x,y,text):
+        if not text:return
+        p.setFont(self.upperevent_font)
+        p.setPen(Qt.GlobalColor.white)
+        p.drawText(QRect(x,y,240,40),Qt.AlignmentFlag.AlignVCenter|Qt.AlignmentFlag.AlignHCenter,text)
+
+    def draw_bevent_text(self,p,x,y,text):
+        if not text:return
+        p.setFont(self.scoreevent_font)
+        p.setPen(Qt.GlobalColor.white)
+        p.drawText(QRect(x,y,240,40),Qt.AlignmentFlag.AlignVCenter|Qt.AlignmentFlag.AlignHCenter,text)
+
+    def draw_timeout_popup(self,p,x,y,text):
+        p.setFont(self.timeout_font)
+        p.setPen(Qt.GlobalColor.white)
+        p.drawText(QRect(x,y,240,45),Qt.AlignmentFlag.AlignCenter,text)
+
+    def draw_possession_text(self,p,x,y,color:QColor):
+        p.setPen(color)
+        f=p.font()
+        f.setPointSize(11)
+        f.setBold(True)
+        p.setFont(f)
+        p.drawText(x,y,"POSS")
+
+    def draw_fouls_text(self,p,x,y,color:QColor):
+        p.setPen(color)
+        f=p.font()
+        f.setPointSize(11)
+        f.setBold(True)
+        p.setFont(f)
+        p.drawText(x,y,"Fouls")
+
+    def mousePressEvent(self,event):
+        if event.button()==Qt.MouseButton.LeftButton:
+            self._drag_pos=event.globalPosition().toPoint()
+
+    def mouseMoveEvent(self,event):
+        if event.buttons()&Qt.MouseButton.LeftButton:
+            delta=event.globalPosition().toPoint()-self._drag_pos
+            self.window().move(self.window().pos()+delta)
+            self._drag_pos=event.globalPosition().toPoint()
+
+    def mouseReleaseEvent(self,event):
+        self._drag_pos=None
+
+    def period_text(self)->str:
+        p=self.state.period
+        labels=["1st","2nd","3rd","4th"]
+        if 1<=p<=4:return labels[p-1]
+        mapping={5:"1 OT",6:"2 OT",7:"3 OT",8:"4 OT",9:"5 OT",11:"FINAL"}
+        return mapping.get(p,"")
+
+    @staticmethod
+    def ordinal(n:int)->str:
+        if n==1:return"1st"
+        if n==2:return"2nd"
+        if n==3:return"3rd"
+        return f"{n}th"
+
+    @staticmethod
+    def pct(made:int,missed:int)->str:
+        total=made+missed
+        if total==0:return"0%"
+        return f"{round(made/total*100):d}%"
+
+    @staticmethod
+    def format_rank_name(rank,name:str):
+        try:r=int(rank)
+        except:r=0
+        name=name.upper()
+        if r<=0:return"",name
+        return str(r),name
+
+    @staticmethod
+    def _blur_image(img:QImage,w:int,h:int,radius:int=18)->QImage:
+        blurred=QImage(w,h,QImage.Format.Format_ARGB32_Premultiplied)
+        blurred.fill(Qt.GlobalColor.transparent)
+        scene=QGraphicsScene()
+        item=scene.addPixmap(QPixmap.fromImage(img))
+        blur=QGraphicsBlurEffect()
+        blur.setBlurRadius(radius)
+        item.setGraphicsEffect(blur)
+        rp=QPainter(blurred)
+        scene.render(rp)
+        rp.end()
+        return blurred
+
+    @staticmethod
+    def _make_radial_glow_image(w:int,h:int,color:QColor,alpha:int=160)->QImage:
+        img=QImage(w,h,QImage.Format.Format_ARGB32_Premultiplied)
+        img.fill(Qt.GlobalColor.transparent)
+        offp=QPainter(img)
+        offp.setRenderHint(QPainter.RenderHint.Antialiasing,True)
+        c1,c2=QColor(color),QColor(color)
+        c1.setAlpha(alpha)
+        c2.setAlpha(0)
+        grad=QRadialGradient(w/2,h/2,max(w,h)*0.75)
+        grad.setColorAt(0.0,c1)
+        grad.setColorAt(0.45,c1)
+        grad.setColorAt(1.0,c2)
+        offp.setPen(Qt.PenStyle.NoPen)
+        offp.setBrush(grad)
+        offp.drawRect(0,0,w,h)
+        offp.end()
+        return img
+    def draw_left_triangle(self, p: QPainter, x, y, w, h, color: QColor):
+        path = QPainterPath()
+        path.moveTo(x - w / 3, y)          # tip (left)
+        path.lineTo(x + w / 3, y - h / 3)  # top-right
+        path.lineTo(x + w / 3, y + h / 3)  # bottom-right
+        path.closeSubpath()
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(color))
+        p.drawPath(path)
+    def draw_right_triangle(self, p: QPainter, x, y, w, h, color: QColor):
+        path = QPainterPath()
+        path.moveTo(x + w / 3, y)          # tip (right)
+        path.lineTo(x - w / 3, y - h / 3)  # top-left
+        path.lineTo(x - w / 3, y + h / 3)  # bottom-left
+        path.closeSubpath()
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(color))
+        p.drawPath(path)
+    def draw_up_triangle(self, p: QPainter, x, y, w, h, color: QColor):
+        path = QPainterPath()
+        path.moveTo(x, y - h / 2)
+        path.lineTo(x - w / 2, y + h / 2)
+        path.lineTo(x + w / 2, y + h / 2)
+        path.closeSubpath()
+
+        p.save()
+        p.setPen(QPen(QColor("#ffffff"), 2))
+        p.setBrush(QBrush(color))
+        p.drawPath(path)
+        p.restore()
+    def draw_down_triangle(self, p: QPainter, x, y, w, h, color: QColor):
+        path = QPainterPath()
+        path.moveTo(x, y + h / 2)
+        path.lineTo(x - w / 2, y - h / 2)
+        path.lineTo(x + w / 2, y - h / 2)
+        path.closeSubpath()
+
+        p.save()
+        p.setPen(QPen(QColor("#ffffff"), 2))
+        p.setBrush(QBrush(color))
+        p.drawPath(path)
+        p.restore()
 class LogoReveal(QObject):
     def __init__(self):
         super().__init__()
@@ -427,15 +1275,30 @@ class ScoreState:
         self.soccer_progress = 0.0
         self.soccer_start_time = None
         self.soccer_direction = 1
+        self.bsaway_score = 0
+        self.bshome_score = 0
+        self.inning = 1
+        self.top_inning = True
+        self.balls = 0
+        self.strikes = 0
+        self.outs = 0
+        self.bspossession = "top"
+        self.half_inning = "top"  # or "bottom"
+        self.first_base = False
+        self.second_base = False
+        self.third_base = False
+        self.pitch_count = 0
+    
 state = ScoreState()
 
 class UIUpdater(QObject):
     refresh = Signal()
 ui_updater = UIUpdater()
 
-class FootballScoreboard(QWidget):
+class FootballScoreboard(QWidget, ScoreboardToolkit):
     def __init__(self, state: "ScoreState", mode="transparent", parent=None):
         super().__init__(parent)
+
         self.state = state
         self.show_playclock = True
         self.show_intro = True
@@ -445,8 +1308,21 @@ class FootballScoreboard(QWidget):
         self.show_football_final = False
         self.show_home_touchdown = False
         self.show_away_touchdown = False
+
         self.setMinimumSize(1920, 1080)
         self.resize(1920, 1080)
+
+        if self.mode == "transparent":
+            self.setAttribute(Qt.WA_TranslucentBackground)
+            self.setAttribute(Qt.WA_NoSystemBackground, True)
+            self.setAttribute(Qt.WA_OpaquePaintEvent, False)
+        else:
+            self.bg_color = QColor(255, 0, 255)
+
+        self.setAutoFillBackground(False)
+
+        ui_updater.refresh.connect(self.force_repaint)
+
         self.monument_font = QFont("Monument Extended", 40)
         self.mascot_font = QFont("College", 33, QFont.Bold)
         self.big_font = QFont("College", 40, QFont.Bold)
@@ -474,54 +1350,90 @@ class FootballScoreboard(QWidget):
         self.td_font = QFont("Octin Sports", 44, QFont.Bold)
         self.record_font = QFont("College", 12, QFont.Bold)
         self.introrecord_font = QFont("College", 24, QFont.Bold)
+
         self.center_logo_label = QLabel(self)
         self.center_logo_label.setAlignment(Qt.AlignCenter)
+
         self.request_logo_file()
-        ui_updater.refresh.connect(self.update)
-        if self.mode == "transparent":
-            self.setAttribute(Qt.WA_TranslucentBackground)
-        else:
-            self.bg_color = QColor(255, 0, 255)  # green chroma key for vMix
-        self.setAutoFillBackground(False)
+
+    def force_repaint(self):
+        self.repaint()
 
     def request_logo_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select Center Logo", "", "Image Files (*.png *.jpg *.jpeg *.bmp *.gif)")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Center Logo",
+            "",
+            "Image Files (*.png *.jpg *.jpeg *.bmp *.gif)"
+        )
+
         if file_path:
             self._load_center_logo(file_path)
 
     def _load_center_logo(self, file_path: str = ""):
         if not file_path:
             return
+
         pixmap = QPixmap(file_path)
+
         if pixmap.isNull():
-            QMessageBox.warning(self, "Error", "Failed to load image from the selected file.")
+            QMessageBox.warning(
+                self,
+                "Error",
+                "Failed to load image from the selected file."
+            )
         else:
             self.state.center_logo = pixmap
-            self.update()
+            self.repaint()
 
     def paintEvent(self, event):
-        DESIGN_W=1920
-        DESIGN_H=1080
-        p=QPainter(self)
-        p.setRenderHints(QPainter.Antialiasing|QPainter.TextAntialiasing)
-        scale=min(self.width()/DESIGN_W,self.height()/DESIGN_H)  # scale to fit window
-        offset_x=(self.width()-DESIGN_W*scale)/2
-        offset_y=(self.height()-DESIGN_H*scale)/2
-        p.translate(offset_x,offset_y)
-        p.scale(scale,scale)  # ignore Windows DPI completely
+        DESIGN_W = 1920
+        DESIGN_H = 1080
+
+        p = QPainter(self)
+
+        if self.mode == "transparent":
+            p.setCompositionMode(QPainter.CompositionMode_Source)
+            p.fillRect(self.rect(), Qt.transparent)
+            p.setCompositionMode(QPainter.CompositionMode_SourceOver)
+
+        p.setRenderHints(
+            QPainter.Antialiasing |
+            QPainter.TextAntialiasing
+        )
+
+        scale = min(
+            self.width() / DESIGN_W,
+            self.height() / DESIGN_H
+        )
+
+        offset_x = (self.width() - DESIGN_W * scale) / 2
+        offset_y = (self.height() - DESIGN_H * scale) / 2
+
+        p.translate(offset_x, offset_y)
+        p.scale(scale, scale)
+
         if self.mode == "keyable":
-            # solid green for chroma key
-            p.fillRect(self.rect(), self.bg_color)
+            p.fillRect(0, 0, DESIGN_W, DESIGN_H, self.bg_color)
+
         if self.show_intro:
             self.draw_intro(p)
-        if self.show_scorebug and not (self.state.home_touchdown_active or self.state.away_touchdown_active):
+
+        if self.show_scorebug and not (
+            self.state.home_touchdown_active or
+            self.state.away_touchdown_active
+        ):
             self.draw_scorebug(p)
+
         if self.show_home_touchdown:
             self.draw_home_touchdown(p)
+
         if self.show_away_touchdown:
             self.draw_away_touchdown(p)
+
         if self.show_breakboard:
             self.draw_breakboard(p)
+
         if self.show_football_final:
             self.draw_football_final(p)
             return
@@ -1644,856 +2556,6 @@ class FootballScoreboard(QWidget):
         if self.state.bottom_event_active:
             self.draw_bottom_event_text(p, left_x+25, 1045, self.state.bottom_event_text_football)
         p.end()
-    def draw_left_triangle(self, p: QPainter, x, y, w, h, color: QColor):
-        path = QPainterPath()
-        path.moveTo(x - w / 3, y)          # tip (left)
-        path.lineTo(x + w / 3, y - h / 3)  # top-right
-        path.lineTo(x + w / 3, y + h / 3)  # bottom-right
-        path.closeSubpath()
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(color))
-        p.drawPath(path)
-    def draw_right_triangle(self, p: QPainter, x, y, w, h, color: QColor):
-        path = QPainterPath()
-        path.moveTo(x + w / 3, y)          # tip (right)
-        path.lineTo(x - w / 3, y - h / 3)  # top-left
-        path.lineTo(x - w / 3, y + h / 3)  # bottom-left
-        path.closeSubpath()
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(color))
-        p.drawPath(path)
-    def draw_transparent_to_black_rect(self, p: QPainter, x, y, w, h, radius: int = 12):
-        grad = QLinearGradient(x, y, x + w, y + h)
-        grad.setColorAt(0.0, QColor(0, 0, 0, 0))   # alpha = 0
-        grad.setColorAt(0.5, QColor(0, 0, 0, 200))
-        grad.setColorAt(1.0, QColor(0, 0, 0, 255))
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(grad))
-        p.drawRoundedRect(QRect(int(x), int(y), int(w), int(h)), radius, radius)
-    def draw_fully_gradient_rect(self, p: QPainter, x, y, w, h, color: QColor, radius: int = 12):
-        darker = color.darker(225)   # 175 = 75% darker; adjust if needed
-        sdarker = color.darker(125) 
-        grad = QLinearGradient(x, y, x + w, y)
-        grad.setColorAt(0.0, color)
-        grad.setColorAt(0.5, darker)
-        grad.setColorAt(1.0, darker)
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(grad))
-        p.drawRoundedRect(QRect(int(x), int(y), int(w), int(h)), radius, radius)
-    def draw_panel_base(self, p, x, y, w, h, color: QColor, thickness: int =5):
-        radius = 10
-        pen = QPen(color)
-        pen.setWidth(thickness)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        p.drawRoundedRect(x, y, w, h, radius , radius)
-    def draw_ppanel_base(self, p, x, y, w, h, color: QColor, thickness: int =3):
-        radius = 10
-        pen = QPen(color)
-        pen.setWidth(thickness)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        p.drawRoundedRect(x, y, w, h, radius , radius)
-    def draw_fpanel_base(self, p, x, y, w, h, color: QColor, thickness: int =2):
-        radius = 10
-        pen = QPen(color)
-        pen.setWidth(thickness)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        p.drawRoundedRect(x, y, w, h, radius , radius)
-    def draw_tdpanel_base(self, p, x, y, w, h, color: QColor, thickness: int = 4):
-        radius = 10
-        pen = QPen(color)
-        pen.setWidth(thickness)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        p.drawRoundedRect(x, y, w, h, radius, radius)
-        shadow_color = QColor(color)
-        shadow_color.setAlpha(150)  # adjust transparency
-        p.setPen(Qt.NoPen)
-        p.setBrush(shadow_color)
-        for i in range(20):  # number of layers
-            inset = i + 1
-            p.drawRoundedRect(x + inset, y + inset, w - 2*inset, h - 2*inset, radius - inset, radius - inset)  
-    def draw_away_notch(self, p: QPainter, x, y, w, h, color: QColor):
-        offset = h * 0.25
-        p.setPen(Qt.NoPen)
-        p.setBrush(color)
-        path = QPainterPath()
-        path.moveTo(x, y)
-        path.lineTo(x + w, y + offset)
-        path.lineTo(x + w, y + h - offset )
-        path.lineTo(x, y + h)
-        path.closeSubpath
-        p.drawPath(path)
-    def draw_home_notch(self, p: QPainter, x, y, w, h, color: QColor):
-        offset = h * 0.25
-        p.save()
-        p.setPen(Qt.NoPen)
-        p.setBrush(color)
-        path = QPainterPath()
-        path.moveTo(x + w, y)                 # top-right
-        path.lineTo(x, y + offset)            # top-left inward
-        path.lineTo(x, y + h - offset)        # bottom-left inward
-        path.lineTo(x + w, y + h)             # bottom-right
-        path.closeSubpath()
-        p.drawPath(path)
-        p.restore()
-    def draw_bottom_event_text(self, p: QPainter, x: int, y: int, text: str):
-        if not text:
-            return
-        w = 640
-        h= 22
-        p.setFont(self.event_font)
-        p.setPen(Qt.white)
-        p.drawText(QRect(x, y, w, h), Qt.AlignCenter, text)
-    def draw_event_text(self, p: QPainter, x: int, y: int, text: str):
-        if not text:
-            return
-        w = 240
-        h= 22
-        p.setFont(self.record_font)
-        p.setPen(Qt.white)
-        p.drawText(QRect(x, y, w, h), Qt.AlignVCenter | Qt.AlignHCenter, text)
-    def draw_timeout_popup(self, p: QPainter, x, y, text):
-        w = 140
-        h = 22
-        radius = 7
-        p.setFont(self.record_font)
-        p.setPen(Qt.white)
-        p.drawText(QRect(x, y, w, h), Qt.AlignCenter, text)
-    def draw_panel_glow(self, p, x, y, w, h, color: QColor):
-        radius = 10
-        glow_rect = QRectF(x+2, y+2, w-4, h-4)
-        base = QColor(color)
-        color_outer_rim = QColor(color).darker(100)
-        color_inner_fill = QColor(color).lighter(150)
-        rim_grad = QLinearGradient(glow_rect.left(), glow_rect.center().y(),glow_rect.right(), glow_rect.center().y())
-        rim_grad.setColorAt(0.00, color_outer_rim)
-        rim_grad.setColorAt(0.12, color_outer_rim)
-        rim_grad.setColorAt(0.20, color_outer_rim)
-        rim_grad.setColorAt(0.80, color_outer_rim)
-        rim_grad.setColorAt(0.88, color_outer_rim)
-        rim_grad.setColorAt(1.00, color_outer_rim)
-        p.setPen(Qt.NoPen)
-        p.setBrush(rim_grad)
-        p.drawRoundedRect(glow_rect, radius, radius)
-        fill_grad = QLinearGradient(glow_rect.left(), glow_rect.center().y(),glow_rect.right(), glow_rect.center().y())
-        fill_grad.setColorAt(0.00, color_outer_rim)
-        fill_grad.setColorAt(0.15, color_outer_rim)
-        fill_grad.setColorAt(0.50, color_inner_fill)
-        fill_grad.setColorAt(0.85, color_inner_fill)
-        fill_grad.setColorAt(1.00, color_inner_fill)
-        p.setBrush(fill_grad)
-        p.drawRoundedRect(glow_rect, radius, radius)
-        white_strong = QColor(255, 255, 255, 160)
-        white_soft   = QColor(255, 255, 255, 60)
-        bloom = QLinearGradient(glow_rect.center().x(), glow_rect.bottom(), glow_rect.center().x(), glow_rect.top())
-        bloom.setColorAt(0.00, color_outer_rim)  # base edge
-        bloom.setColorAt(0.20, color_outer_rim)    # fade
-        bloom.setColorAt(0.45, Qt.transparent)  # vanish
-        p.setBrush(bloom)
-        p.drawRoundedRect(glow_rect, radius, radius)
-    def format_rank_name(self, rank, name):
-        try:
-            r = int(rank)
-        except:
-            r = 0
-        name = name.upper()
-        if r <= 0:
-            return "", name
-        return str(r), name
-    def draw_top_gloss(self, p: QPainter, x, y, w, h):
-        gloss_h = int(h * 0.35)
-        gloss_y = int(y + h * 0.12)
-        grad = QLinearGradient(x, gloss_y, x + w, gloss_y)
-        grad.setColorAt(0.00, QColor(255, 255, 255, 0))
-        grad.setColorAt(0.20, QColor(255, 255, 255, 50))
-        grad.setColorAt(0.50, QColor(255, 255, 255, 70))  # brightest middle
-        grad.setColorAt(0.80, QColor(255, 255, 255, 50))
-        grad.setColorAt(1.00, QColor(255, 255, 255, 0))
-        p.save()
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(grad))
-        p.drawRect(int(x), gloss_y, int(w), gloss_h)
-        p.restore()
-    def draw_horizontal_glow(p, x, y, w, h, color: QColor):
-        grad = QLinearGradient(x, y, x + w, y)
-        c0 = QColor(color)
-        c0.setAlpha(0)
-        c1 = QColor(color)
-        c1.setAlpha(160)
-        c2 = QColor(color)
-        c2.setAlpha(0)
-        grad.setColorAt(0.0, c0)
-        grad.setColorAt(0.50, c1)
-        grad.setColorAt(1.0, c2)
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(grad))
-        p.drawRoundedRect(x, y, w, h, h/2, h/2)
-    def draw_round_left(self, p: QPainter, x, y, w, h, color: QColor, r=10):
-        p.setPen(Qt.NoPen)
-        p.setBrush(color)
-        path = QPainterPath()
-        path.moveTo(x + r, y)
-        path.lineTo(x + w, y)
-        path.lineTo(x + w, y + h)
-        path.lineTo(x + r, y + h)
-        path.quadTo(x, y + h, x, y + h - r)
-        path.lineTo(x, y + r)
-        path.quadTo(x, y, x + r, y)
-        p.drawPath(path)
-    def draw_rounded_rect(self, p: QPainter, x, y, w, h, color: QColor):
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(color))
-        radius = 12
-        path = QPainterPath()
-        path.moveTo(x, y)
-        path.lineTo(x + w, y)
-        path.lineTo(x + w, y + h - radius)
-        path.quadTo(x + w, y + h, x + w - radius, y + h)
-        path.lineTo(x + radius, y + h)
-        path.quadTo(x, y + h, x, y + h - radius)
-        path.lineTo(x, y)
-        p.drawPath(path)
-    def draw_introround_left(self, p: QPainter, x, y, w, h, color: QColor, r=10):
-        path = QPainterPath()
-        path.moveTo(x + r, y)
-        path.lineTo(x + w, y)
-        path.lineTo(x + w, y + h)
-        path.lineTo(x + r, y + h)
-        path.quadTo(x, y + h, x, y + h - r)
-        path.lineTo(x, y + r)
-        path.quadTo(x, y, x + r, y)
-        p.save()
-        p.setPen(Qt.NoPen)
-        grad = QLinearGradient(x, y, x + w, y)
-        darker = color.darker(150)
-        darke = color.darker(175)
-        sdarker = color.darker(200)
-        dark = color.darker(225)
-        darkest = color.darker(250)
-        grad.setColorAt(0.0, darker)      # left team color
-        grad.setColorAt(0.2, darke)
-        grad.setColorAt(0.4, sdarker)     # darker
-        grad.setColorAt(0.4, dark)
-        grad.setColorAt(0.6, darkest)
-        grad.setColorAt(0.8, QColor(0,0,0))    # very dark
-        grad.setColorAt(1.0, QColor(0,0,0))  # black
-        p.setBrush(QBrush(grad))
-        p.drawPath(path)
-        p.restore()
-    def draw_semitransparent_rounded_rect(self, p: QPainter, x, y, w, h, color: QColor):
-        c = QColor(color)
-        c.setAlpha(225)
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(c))
-        radius = 12
-        path = QPainterPath()
-        path.moveTo(x, y)
-        path.lineTo(x + w, y)
-        path.lineTo(x + w, y + h - radius)
-        path.quadTo(x + w, y + h, x + w - radius, y + h)
-        path.lineTo(x + radius, y + h)
-        path.quadTo(x, y + h, x, y + h - radius)
-        path.lineTo(x, y)
-        p.drawPath(path)
-    def draw_round_right(self, p: QPainter, x, y, w, h, color: QColor, r=10):
-        p.setPen(Qt.NoPen)
-        p.setBrush(color)
-        path = QPainterPath()
-        path.moveTo(x, y)
-        path.lineTo(x + w - r, y)
-        path.quadTo(x + w, y, x + w, y + r)
-        path.lineTo(x + w, y + h - r)
-        path.quadTo(x + w, y + h, x + w - r, y + h)
-        path.lineTo(x, y + h)
-        path.lineTo(x, y)
-        p.drawPath(path)
-    def draw_introround_right(self, p: QPainter, x, y, w, h, color: QColor, r=10):
-        path = QPainterPath()
-        path.moveTo(x, y)
-        path.lineTo(x + w - r, y)
-        path.quadTo(x + w, y, x + w, y + r)
-        path.lineTo(x + w, y + h - r)
-        path.quadTo(x + w, y + h, x + w - r, y + h)
-        path.lineTo(x, y + h)
-        path.lineTo(x, y)
-        p.save()
-        p.setPen(Qt.NoPen)
-        darker = color.darker(150)
-        darke = color.darker(175)
-        sdarker = color.darker(200)
-        dark = color.darker(225)
-        darkest = color.darker(250)
-        grad = QLinearGradient(x + w, y, x, y)
-        grad.setColorAt(0.0, darker)      # left team color
-        grad.setColorAt(0.2, darke)
-        grad.setColorAt(0.4, sdarker)     # darker
-        grad.setColorAt(0.4, dark)
-        grad.setColorAt(0.6, darkest)
-        grad.setColorAt(0.8, QColor(0,0,0))    # very dark
-        grad.setColorAt(1.0, QColor(0,0,0))  # black
-        p.setBrush(QBrush(grad))
-        p.drawPath(path)
-        p.restore()
-    def draw_bottom_round_rect(self, p: QPainter, x, y, w, h, color: QColor, radius=12):
-        p.setPen(Qt.NoPen)
-        p.setBrush(color)
-        path = QPainterPath()
-        path.moveTo(x, y)
-        path.lineTo(x + w, y)
-        path.lineTo(x + w, y + h - radius)
-        path.quadTo(x + w, y + h,x + w - radius, y + h)
-        path.lineTo(x + radius, y + h)
-        path.quadTo(x, y + h,x, y + h - radius)
-        path.lineTo(x, y)
-        p.drawPath(path)
-    def draw_glow_top_round(self, p: QPainter, x, y, w, h, color: QColor, thickness=2):
-        r = 10
-        glow_radius = 18
-        img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        img.fill(Qt.transparent)
-        offp = QPainter(img)
-        offp.setRenderHint(QPainter.Antialiasing, True)
-        grad = QRadialGradient(w/2, h/2, max(w, h) * 0.75)
-        c1 = QColor(color)
-        c1.setAlpha(160)
-        c2 = QColor(color)
-        c2.setAlpha(0)
-        grad.setColorAt(0.00, c1)
-        grad.setColorAt(0.45, c1)
-        grad.setColorAt(1.00, c2)
-        offp.setPen(Qt.NoPen)
-        offp.setBrush(grad)
-        path = QPainterPath()
-        path.moveTo(r, 0)
-        path.quadTo(0, 0, 0, r)
-        path.lineTo(0, h)
-        path.lineTo(w, h)
-        path.lineTo(w, r)
-        path.quadTo(w, 0, w - r, 0)
-        path.lineTo(r, 0)
-        offp.drawPath(path)
-        offp.end()
-        blurred = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        blurred.fill(Qt.transparent)
-        scene = QGraphicsScene()
-        item = scene.addPixmap(QPixmap.fromImage(img))
-        blur = QGraphicsBlurEffect()
-        blur.setBlurRadius(glow_radius)
-        item.setGraphicsEffect(blur)
-        rp = QPainter(blurred)
-        scene.render(rp)
-        rp.end()
-        p.drawImage(x, y, blurred)
-        p.setRenderHint(QPainter.Antialiasing, True)
-        pen = QPen(color, thickness)
-        pen.setCapStyle(Qt.RoundCap)
-        pen.setJoinStyle(Qt.RoundJoin)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        outline = QPainterPath()
-        outline.moveTo(x + r, y)
-        outline.quadTo(x, y, x, y + r)
-        outline.lineTo(x, y + h)
-        outline.lineTo(x + w, y + h)
-        outline.lineTo(x + w, y + r)
-        outline.quadTo(x + w, y, x + w - r, y)
-        outline.lineTo(x + r, y)
-        p.drawPath(outline)
-    def draw_glow_round_left(self, p: QPainter, x, y, w, h, color: QColor, thickness=2):
-        r = 10
-        glow_radius = 18
-        img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        img.fill(Qt.transparent)
-        offp = QPainter(img)
-        offp.setRenderHint(QPainter.Antialiasing, True)
-        grad = QRadialGradient(w/2, h/2, max(w, h) * 0.75)
-        c1 = QColor(color)
-        c1.setAlpha(160)
-        c2 = QColor(color)
-        c2.setAlpha(0)
-        grad.setColorAt(0.00, c1)
-        grad.setColorAt(0.45, c1)
-        grad.setColorAt(1.00, c2)
-        offp.setPen(Qt.NoPen)
-        offp.setBrush(grad)
-        path = QPainterPath()
-        path.moveTo(r, 0)
-        path.quadTo(0, 0, 0, r)
-        path.lineTo(0, h - r)
-        path.quadTo(0, h, r, h)
-        path.lineTo(w, h)         # bottom to right (open)
-        path.lineTo(w, 0)         # right side (open)
-        path.lineTo(r, 0)
-        offp.drawPath(path)
-        offp.end()
-        blurred = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        blurred.fill(Qt.transparent)
-        scene = QGraphicsScene()
-        item = scene.addPixmap(QPixmap.fromImage(img))
-        blur = QGraphicsBlurEffect()
-        blur.setBlurRadius(glow_radius)
-        item.setGraphicsEffect(blur)
-        rp = QPainter(blurred)
-        scene.render(rp)
-        rp.end()
-        p.drawImage(x, y, blurred)
-        p.setRenderHint(QPainter.Antialiasing, True)
-        pen = QPen(color, thickness)
-        pen.setCapStyle(Qt.RoundCap)
-        pen.setJoinStyle(Qt.RoundJoin)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        outline = QPainterPath()
-        outline.moveTo(x + r, y)
-        outline.quadTo(x, y, x, y + r)
-        outline.lineTo(x, y + h - r)
-        outline.quadTo(x, y + h, x + r, y + h)
-        outline.lineTo(x + w, y + h)
-        outline.moveTo(x + w, y)
-        outline.lineTo(x + r, y)
-        p.drawPath(outline)
-    def draw_glow_round_ddleft(self, p: QPainter, x, y, w, h, color: QColor, thickness=2):
-        r = 10
-        glow_radius = 18
-        top_inset = 125   # <-- adjustable top inset
-        img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        img.fill(Qt.transparent)
-        offp = QPainter(img)
-        offp.setRenderHint(QPainter.Antialiasing, True)
-        grad = QLinearGradient(0, h/2, w*0.5, h/2)
-        c1 = QColor(color)
-        c1.setAlpha(200)
-        c2 = QColor(color)
-        c2.setAlpha(0)
-        grad.setColorAt(0.0, c1)
-        grad.setColorAt(1.0, c2)
-        offp.setPen(Qt.NoPen)
-        offp.setBrush(grad)
-        path = QPainterPath()
-        path.moveTo(r, 0)
-        path.quadTo(0, 0, 0, r)
-        path.lineTo(0, h - r)
-        path.quadTo(0, h, r, h)
-        path.lineTo(w, h)
-        path.lineTo(w, 0)
-        path.closeSubpath()
-        offp.drawPath(path)
-        offp.end()
-        blurred = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        blurred.fill(Qt.transparent)
-        scene = QGraphicsScene()
-        item = scene.addPixmap(QPixmap.fromImage(img))
-        blur = QGraphicsBlurEffect()
-        blur.setBlurRadius(glow_radius)
-        item.setGraphicsEffect(blur)
-        rp = QPainter(blurred)
-        scene.render(rp)
-        rp.end()
-        p.drawImage(x, y, blurred)
-        p.setRenderHint(QPainter.Antialiasing, True)
-        pen = QPen(color, thickness)
-        pen.setCapStyle(Qt.RoundCap)
-        pen.setJoinStyle(Qt.RoundJoin)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        outline = QPainterPath()
-        outline.moveTo(x + w, y + h)
-        outline.lineTo(x + r, y + h)
-        outline.quadTo(x, y + h, x, y + h - r)
-        outline.lineTo(x, y + r)
-        outline.quadTo(x, y, x + r, y)
-        outline.lineTo(x + top_inset, y)
-        p.drawPath(outline)
-    def draw_glow_round_ddright(self, p: QPainter, x, y, w, h, color: QColor, thickness=1):
-        r = 10
-        glow_radius = 18
-        top_inset = 25   # <-- adjustable top indent
-        img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        img.fill(Qt.transparent)
-        offp = QPainter(img)
-        offp.setRenderHint(QPainter.Antialiasing, True)
-        grad = QLinearGradient(w, h/2, w*0.5, h/2)
-        c1 = QColor(color)
-        c1.setAlpha(200)  # strong inside
-        c2 = QColor(color)
-        c2.setAlpha(0)    # fade inside
-        grad.setColorAt(0.00, c1)
-        grad.setColorAt(1.00, c2)
-        offp.setPen(Qt.NoPen)
-        offp.setBrush(grad)
-        path = QPainterPath()
-        path.moveTo(0, 0)
-        path.lineTo(w - r, 0)
-        path.quadTo(w, 0, w, r)
-        path.lineTo(w, h - r)
-        path.quadTo(w, h, w - r, h)
-        path.lineTo(0, h)
-        path.closeSubpath()
-        offp.drawPath(path)
-        offp.end()
-        blurred = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        blurred.fill(Qt.transparent)
-        scene = QGraphicsScene()
-        item = scene.addPixmap(QPixmap.fromImage(img))
-        blur = QGraphicsBlurEffect()
-        blur.setBlurRadius(glow_radius)
-        item.setGraphicsEffect(blur)
-        rp = QPainter(blurred)
-        scene.render(rp)
-        rp.end()
-        p.drawImage(x, y, blurred)
-        p.setRenderHint(QPainter.Antialiasing, True)
-        pen = QPen(color, thickness)
-        pen.setCapStyle(Qt.RoundCap)
-        pen.setJoinStyle(Qt.RoundJoin)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        outline = QPainterPath()
-        outline.moveTo(x, y + h)
-        outline.lineTo(x + w - r, y + h)
-        outline.quadTo(x + w, y + h, x + w, y + h - r)
-        outline.lineTo(x + w, y + r)
-        outline.quadTo(x + w, y, x + w - r, y)
-        outline.lineTo(x + top_inset, y)
-        p.drawPath(outline)
-    def draw_glow_round_right(self, p: QPainter, x, y, w, h, color: QColor, thickness=2):
-        r = 10
-        glow_radius = 18
-        img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        img.fill(Qt.transparent)
-        offp = QPainter(img)
-        offp.setRenderHint(QPainter.Antialiasing, True)
-        grad = QRadialGradient(w/2, h/2, max(w, h) * 0.75)
-        c1 = QColor(color)
-        c1.setAlpha(160)
-        c2 = QColor(color)
-        c2.setAlpha(0)
-        grad.setColorAt(0.00, c1)
-        grad.setColorAt(0.45, c1)
-        grad.setColorAt(1.00, c2)
-        offp.setPen(Qt.NoPen)
-        offp.setBrush(grad)
-        path = QPainterPath()
-        path.moveTo(0, 0)
-        path.lineTo(w - r, 0)
-        path.quadTo(w, 0, w, r)
-        path.lineTo(w, h - r)
-        path.quadTo(w, h, w - r, h)
-        path.lineTo(0, h)
-        offp.drawPath(path)
-        offp.end()
-        blurred = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        blurred.fill(Qt.transparent)
-        scene = QGraphicsScene()
-        item = scene.addPixmap(QPixmap.fromImage(img))
-        blur = QGraphicsBlurEffect()
-        blur.setBlurRadius(glow_radius)
-        item.setGraphicsEffect(blur)
-        rp = QPainter(blurred)
-        scene.render(rp)
-        rp.end()
-        p.drawImage(x, y, blurred)
-        p.setRenderHint(QPainter.Antialiasing, True)
-        pen = QPen(color, thickness)
-        pen.setCapStyle(Qt.RoundCap)
-        pen.setJoinStyle(Qt.RoundJoin)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        outline = QPainterPath()
-        outline.moveTo(x, y)
-        outline.lineTo(x + w - r, y)
-        outline.quadTo(x + w, y, x + w, y + r)
-        outline.lineTo(x + w, y + h - r)
-        outline.quadTo(x + w, y + h, x + w - r, y + h)
-        outline.lineTo(x, y + h)
-        p.drawPath(outline)
-    def draw_base_bar(self, p: QPainter, x, y, w, h):
-        radius = 10
-        path = QPainterPath()
-        path.moveTo(x + radius, y)
-        path.lineTo(x + w, y)
-        path.lineTo(x + w, y + h)
-        path.lineTo(x + radius, y + h)
-        path.quadTo(x, y + h, x, y + h - radius)
-        path.lineTo(x, y + radius)
-        path.quadTo(x, y, x + radius, y)
-        p.setPen(Qt.NoPen)
-        p.setBrush(QColor(25, 25, 25))
-        p.drawPath(path)
-    def draw_hmbase_bar(self, p: QPainter, x, y, w, h):
-        radius = 10
-        path = QPainterPath()
-        path.moveTo(x, y)
-        path.lineTo(x + w - radius, y)
-        path.quadTo(x + w, y, x + w, y + radius)
-        path.lineTo(x + w, y + h - radius)
-        path.quadTo(x + w, y + h, x + w - radius, y + h)
-        path.lineTo(x, y + h)
-        path.lineTo(x, y)
-        p.setPen(Qt.NoPen)
-        p.setBrush(QColor(25, 25, 25))
-        p.drawPath(path)
-    def draw_pod(self, p: QPainter, x, y, pod_w, h, base_color: QColor):
-        left_r = 10     # left side radius
-        right_r = 62    # bottom-right radius
-        path = QPainterPath()
-        path.moveTo(x + left_r, y)
-        path.lineTo(x + pod_w, y)    # FLAT TOP RIGHT
-        path.lineTo(x + pod_w, y + h - right_r)
-        path.quadTo(x + pod_w, y + h, x + pod_w - right_r, y + h)
-        path.lineTo(x + left_r, y + h)
-        path.quadTo(x, y + h, x, y + h - left_r)
-        path.lineTo(x, y + left_r)
-        path.quadTo(x, y, x + left_r, y)
-        path.closeSubpath()
-        cx = x + pod_w * 0.45
-        cy = y + h * 0.20
-        rad = pod_w * 1.2
-        glow = QRadialGradient(cx, cy, rad)
-        glow.setColorAt(0.00, base_color)
-        glow.setColorAt(0.30, base_color)
-        glow.setColorAt(0.60, base_color)
-        glow.setColorAt(0.85, base_color.lighter(160))
-        glow.setColorAt(1.00, QColor(25, 25, 25))
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(glow))
-        p.drawPath(path)
-        fade = QLinearGradient(x, y, x + pod_w, y)
-        fade.setColorAt(0.0, QColor(0, 0, 0, 0))
-        fade.setColorAt(1.0, QColor(0, 0, 0, 60))
-        p.setBrush(QBrush(fade))
-        p.drawPath(path)
-    def draw_hmpod(self, p: QPainter, x, y, pod_w, h, base_color: QColor):
-        left_r  = 62     # bottom-left radius
-        right_r = 10     # top-right and bottom-right radius
-        path = QPainterPath()
-        path.moveTo(x, y)
-        path.lineTo(x + pod_w - right_r, y)
-        path.quadTo(x + pod_w, y, x + pod_w, y + right_r)
-        path.lineTo(x + pod_w, y + h - right_r)
-        path.quadTo(x + pod_w, y + h, x + pod_w - right_r, y + h)
-        path.lineTo(x + left_r, y + h)
-        path.quadTo(x, y + h, x, y + h - left_r)
-        path.lineTo(x, y)
-        path.closeSubpath()
-        cx = x + pod_w * 0.45
-        cy = y + h * 0.20
-        rad = pod_w * 1.2
-        glow = QRadialGradient(cx, cy, rad)
-        glow.setColorAt(0.00, base_color)
-        glow.setColorAt(0.30, base_color)
-        glow.setColorAt(0.60, base_color)
-        glow.setColorAt(0.85, base_color.lighter(160))
-        glow.setColorAt(1.00, QColor(25, 25, 25))
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(glow))
-        p.drawPath(path)
-    def draw_inner_edge_glow(self, p: QPainter, x, y, w, h, color: QColor):
-        img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        img.fill(Qt.transparent)
-        off = QPainter(img)
-        off.setRenderHint(QPainter.Antialiasing, True)
-        r = h * 0.22  # same rounding as panel
-        path = QPainterPath()
-        path.addRoundedRect(0, 0, w, h, r, r)
-        off.setClipPath(path)
-        grad = QLinearGradient(0, 0, w, 0)
-        grad.setColorAt(0.00, color)                 # leading edge = strong team color
-        grad.setColorAt(0.28, QColor(255,255,255))   # hotspot inside
-        grad.setColorAt(0.55, QColor(255,255,255,0)) # fade toward interior
-        grad.setColorAt(1.00, QColor(0,0,0,0))       # vanish fully
-        off.setPen(Qt.NoPen)
-        off.setBrush(grad)
-        strip_h = int(h * 0.45)  # thickness of glow zone
-        off.drawRect(0, (h-strip_h)//2, w, strip_h)
-        off.end()
-        blurred = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        blurred.fill(Qt.transparent)
-        scene = QGraphicsScene()
-        item = scene.addPixmap(QPixmap.fromImage(img))
-        blur = QGraphicsBlurEffect()
-        blur.setBlurRadius(10)   # <- small blur keeps glow inside borders
-        item.setGraphicsEffect(blur)
-        rp = QPainter(blurred)
-        scene.render(rp)
-        rp.end()
-        p.drawImage(x, y, blurred)
-    def draw_timeout_rects(self, p: QPainter, x, y, remaining, max_count=3, align="right"):
-        w = 21
-        h = 3
-        spacing = 7
-        radius = 1
-        remaining = max(0, min(max_count, int(remaining)))
-        p.setPen(Qt.NoPen)
-        if align == "left":
-            for i in range(max_count):
-                rect_x = x + i * (w + spacing)
-                filled = (i < remaining)                      # <-- FIX
-                p.setBrush(QColor("white") if filled else QColor(255,255,255,60))
-                p.drawRoundedRect(QRect(int(rect_x), int(y), int(w), int(h)), radius, radius)
-        if align == "right":
-            total_w = max_count * w + (max_count - 1) * spacing
-            for i in range(max_count):
-                rect_x = x + i * (w + spacing)
-                idx_from_right = max_count - 1 - i
-                filled = (idx_from_right < remaining)
-                p.setBrush(QColor("white") if filled else QColor(255,255,255,60))
-                p.drawRoundedRect(QRect(int(rect_x), int(y), int(w), int(h)), radius, radius)
-    def draw_top_flat_rect(self, p: QPainter, x, y, w, h, color: QColor, radius: int = 12):
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(color))
-        path = QPainterPath()
-        path.moveTo(x, y)
-        path.lineTo(x + w, y)
-        path.lineTo(x + w, y + h - radius)
-        path.quadTo(x + w, y + h, x + w - radius, y + h)
-        path.lineTo(x + radius, y + h)
-        path.quadTo(x, y + h, x, y + h - radius)
-        path.lineTo(x, y)
-        p.drawPath(path)
-    def draw_fully_grounded_rect(self, p: QPainter, x, y, w, h, radius: int = 12):
-        grad = QLinearGradient(x, y, x + w, y)
-        grad.setColorAt(0.0, QColor(0, 0, 0))
-        grad.setColorAt(0.5, QColor(128, 128, 128))
-        grad.setColorAt(1.0, QColor(0, 0, 0))
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(grad))
-        p.drawRoundedRect(QRect(int(x), int(y), int(w), int(h)), radius, radius)
-    def draw_fully_rounded_rect(self, p: QPainter, x, y, w, h, color: QColor, radius: int = 12):
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(color))
-        p.drawRoundedRect(QRect(int(x), int(y), int(w), int(h)), radius, radius)
-    def draw_bottom1_rounded_rect(self, p: QPainter, x, y, w, h, color: QColor, radius: int = 7):
-        path = QPainterPath()
-        path.moveTo(x, y)                 # top-left (flat)
-        path.lineTo(x + w, y)             # top-right (flat)
-        path.lineTo(x + w, y + h - radius)
-        path.quadTo(x + w, y + h, x + w - radius, y + h)
-        path.lineTo(x + radius, y + h)
-        path.quadTo(x, y + h, x, y + h - radius)
-        path.lineTo(x, y)
-
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(color))
-        p.drawPath(path)
-    def draw_bottom2_rounded_rect(self,p:QPainter,x,y,w,h,color:QColor,radius:int=7):
-        path=QPainterPath()
-        path.moveTo(x+radius,y)
-        path.lineTo(x+w-radius,y)
-        path.quadTo(x+w,y,x+w,y+radius)
-        path.lineTo(x+w,y+h)
-        path.lineTo(x,y+h)
-        path.lineTo(x,y+radius)
-        path.quadTo(x,y,x+radius,y)
-        path.closeSubpath()
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(color))
-        p.drawPath(path)
-    def draw_ffully_rounded_rect(self, p: QPainter, x, y, w, h, radius: int = 10):
-        p.save()
-        p.setPen(Qt.NoPen)
-        grad = QLinearGradient(x, y, x, y + h)
-        grad.setColorAt(0.0, QColor(200, 200, 200))
-        grad.setColorAt(0.2, QColor(40, 40, 40))
-        grad.setColorAt(0.4, QColor(40, 40, 40))
-        grad.setColorAt(0.5, QColor(40, 40, 40))
-        grad.setColorAt(0.6, QColor(40, 40, 40))
-        grad.setColorAt(0.8, QColor(40, 40, 40))
-        grad.setColorAt(1.0, QColor(200, 200, 200))
-        p.setBrush(QBrush(grad))
-        p.drawRoundedRect(QRect(int(x), int(y), int(w), int(h)), radius, radius)
-        p.restore()
-    def draw_top_rounded_rect(self, p: QPainter, x, y, w, h, color: QColor, radius: int = 12):
-        p.setPen(Qt.NoPen)
-        p.setBrush(color)
-        path = QPainterPath()
-        path.moveTo(x + radius, y)
-        path.lineTo(x + w - radius, y)
-        path.quadTo(x + w, y, x + w, y + radius)
-        path.lineTo(x + w, y + h)
-        path.lineTo(x, y + h)
-        path.lineTo(x, y + radius)
-        path.quadTo(x, y, x + radius, y)
-        path.closeSubpath()
-        p.drawPath(path)
-    def draw_rect_shadow(self, p, x, y, w, h, color):
-        shadow_color = QColor(255,255,255,140)
-        for i in range(6):
-            shadow_color.setAlpha(80 - i*12)
-            p.setBrush(shadow_color)
-            p.drawRect(int(x + 4 + i), int(y + 4 + i), int(w - 2*i), int(h - 2*i))
-        p.setBrush(color)
-        p.drawRect(int(x), int(y), int(w), int(h))
-    def draw_possession_triangle(self, p: QPainter, x, y, color: QColor):
-        tri = QPolygonF([QPointF(x - 26, y - 6),QPointF(x + 26, y - 6),QPointF(x,      y + 3),])
-        size = 100
-        half = size / 2
-        img = QImage(size, size, QImage.Format_ARGB32_Premultiplied)
-        img.fill(Qt.transparent)
-        offp = QPainter(img)
-        offp.setRenderHint(QPainter.Antialiasing, True)
-        path = QPainterPath()
-        path.addPolygon(tri.translated(-x + half, -y + half))
-        offp.setClipPath(path)
-        grad = QRadialGradient(half, half + 10,size * 0.50)
-        grad.setColorAt(0.00, QColor(255,255,255,0))
-        grad.setColorAt(0.50, QColor(255,255,255,0))
-        grad.setColorAt(0.70, QColor(255,255,255,0))
-        grad.setColorAt(1.00, QColor(255,255,255,0))
-        offp.setPen(Qt.NoPen)
-        offp.setBrush(grad)
-        offp.drawRect(0, 0, size, size)
-        offp.end()
-        blurred = QImage(size, size, QImage.Format_ARGB32_Premultiplied)
-        blurred.fill(Qt.transparent)
-        scene = QGraphicsScene()
-        item = scene.addPixmap(QPixmap.fromImage(img))
-        blur = QGraphicsBlurEffect()
-        blur.setBlurRadius(14)
-        item.setGraphicsEffect(blur)
-        rp = QPainter(blurred)
-        scene.render(rp)
-        rp.end()
-        maskp = QPainter(blurred)
-        maskp.setCompositionMode(QPainter.CompositionMode_Clear)
-        maskp.fillRect(0, 0, size, int(half - 16), Qt.transparent)
-        maskp.end()
-        p.drawImage(int(x - half), int(y - half), blurred)
-        p.setRenderHint(QPainter.Antialiasing, True)
-        p.setPen(Qt.NoPen)
-        vgrad = QLinearGradient(
-        x, y - 6,      # top
-        x, y + 6       # bottom
-    )
-        vgrad.setColorAt(0.00, color)
-        vgrad.setColorAt(0.45, QColor(255,255,255))
-        vgrad.setColorAt(0.55, QColor(255,255,255))
-        vgrad.setColorAt(1.00, QColor(255,255,255))
-        p.setBrush(vgrad)
-        p.drawPolygon(tri)
-    def period_text(self):
-        p = self.state.period
-    # --- regular periods ---
-        if 1 <= p <= 4:
-            suffix = ["1st", "2nd", "3rd", "4th"][p-1]
-            return f"{suffix}"
-    # --- overtime periods ---
-        ot_mapping = {
-        5: "1 OT",
-        6: "2 OT",
-        7: "3 OT",
-        8: "4 OT",
-        9: "5 OT"
-    }
-        return ot_mapping.get(p, "")  # returns "" if period is 10+
-    def ordinal(self, n):
-        if n == 1: return "1st"
-        if n == 2: return "2nd"
-        if n == 3: return "3rd"
-        return f"{n}th"
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self._drag_pos = event.globalPosition().toPoint()
@@ -2505,62 +2567,43 @@ class FootballScoreboard(QWidget):
             self._drag_pos = global_pos
     def mouseReleaseEvent(self, event):
         self._drag_pos = None
-    def draw_logo_in_top_rounded_window(self, p, x, y, w, h, logo, radius=12):
-        if logo is None or not isinstance(logo, QPixmap) or logo.isNull():
-            return 
-        p.save()
-        p.setRenderHint(QPainter.SmoothPixmapTransform, True)
-        path = QPainterPath()
-        path.moveTo(x + radius, y)
-        path.lineTo(x + w - radius, y)
-        path.quadTo(x + w, y, x + w, y + radius)
-        path.lineTo(x + w, y + h)      # flat bottom
-        path.lineTo(x, y + h)
-        path.lineTo(x, y + radius)
-        path.quadTo(x, y, x + radius, y)
-        p.setClipPath(path, Qt.IntersectClip)
-        logo_scaled = logo.scaled(
-            w, 9999,
-        Qt.KeepAspectRatio,
-        Qt.SmoothTransformation
-    )
-        lx = x + (w - logo_scaled.width()) // 2
-        ly = y + (h - logo_scaled.height()) // 2
-        p.drawPixmap(lx, ly, logo_scaled)
-        p.restore()
-    def clip_to_rounded_rect(self, p, x, y, w, h, radius=12):
-        path = QPainterPath()
-        rect = QRectF(x, y, w, h)
-        path.addRoundedRect(rect, radius, radius)
-        p.setClipPath(path, Qt.IntersectClip)
 
-class BasketballScoreboard(QWidget):
+class BasketballScoreboard(QWidget, ScoreboardToolkit):
     def __init__(self, state: ScoreState, mode="transparent", parent=None):
         super().__init__(parent)
+
         self.state = state
         self.flash_on = False
         self.mode = mode
+
         self.show_basketball_intro = False
         self.show_basketball_breakboard = False
-        self.show_basketball_scorebug = True 
+        self.show_basketball_scorebug = True
         self.show_basketball_final = False
+
         self.away_logo_state = LogoReveal()
         self.home_logo_state = LogoReveal()
+
         self.setMinimumSize(1920, 1080)
         self.resize(1920, 1080)
+
+        # --- Transparent / Keyable Setup ---
         if self.mode == "transparent":
             self.setAttribute(Qt.WA_TranslucentBackground)
+            self.setAttribute(Qt.WA_NoSystemBackground, True)
+            self.setAttribute(Qt.WA_OpaquePaintEvent, False)
         else:
             self.bg_color = QColor(255, 0, 255)  # green chroma key for vMix
-        self.setAutoFillBackground(False)
-        ui_updater.refresh.connect(self.update)
 
+        self.setAutoFillBackground(False)
+
+        # --- Fonts ---
         self.big_font = QFont("College", 40, QFont.Bold)
         self.timeout_font = QFont("BigNoodleTitling", 35, QFont.Bold)
         self.introupper_font = QFont("BigNoodleTitling", 25, QFont.Bold)
         self.introtitle_font = QFont("College", 30, QFont.Bold)
-        self.introupper1_font = QFont("BigNoodleTitling", 25) 
-        self.introlower_font = QFont("BigNoodleTitling", 20)   
+        self.introupper1_font = QFont("BigNoodleTitling", 25)
+        self.introlower_font = QFont("BigNoodleTitling", 20)
         self.mid_font = QFont("College", 22, QFont.Bold)
         self.POSS_font = QFont("College", 14, QFont.Bold)
         self.brank_font = QFont("BigNoodleTitling", 15)
@@ -2587,53 +2630,95 @@ class BasketballScoreboard(QWidget):
         self.bbscore_font = QFont("Octin Sports", 55, QFont.Bold)
         self.event_font = QFont("Legacy", 12, QFont.Bold)
         self.introrecord_font = QFont("College", 24, QFont.Bold)
+
+        # --- Center Logo ---
         self.center_logo_label = QLabel(self)
         self.center_logo_label.setAlignment(Qt.AlignCenter)
+
         self.request_logo_file()
-        ui_updater.refresh.connect(self.update)
-        if self.mode == "transparent":
-            self.setAttribute(Qt.WA_TranslucentBackground)
-        else:
-            self.bg_color = QColor(255, 0, 255)  # green chroma key for vMix
-        self.setAutoFillBackground(False)
+
+        # --- Force Full Repaint For Transparent Animation ---
+        ui_updater.refresh.connect(self.force_repaint)
+
+
+    def force_repaint(self):
+        self.repaint()
+
 
     def request_logo_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select Center Logo", "", "Image Files (*.png *.jpg *.jpeg *.bmp *.gif)")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Center Logo",
+            "",
+            "Image Files (*.png *.jpg *.jpeg *.bmp *.gif)"
+        )
+
         if file_path:
             self._load_center_logo(file_path)
+
 
     def _load_center_logo(self, file_path: str = ""):
         if not file_path:
             return
+
         pixmap = QPixmap(file_path)
+
         if pixmap.isNull():
-            QMessageBox.warning(self, "Error", "Failed to load image from the selected file.")
+            QMessageBox.warning(
+                self,
+                "Error",
+                "Failed to load image from the selected file."
+            )
         else:
             self.state.center_logo = pixmap
-            self.update()
-    def paintEvent(self,event):
-        DESIGN_W=1920
-        DESIGN_H=1080
-        p=QPainter(self)
-        p.setRenderHints(QPainter.Antialiasing|QPainter.TextAntialiasing)
-        scale=min(self.width()/DESIGN_W,self.height()/DESIGN_H)  # scale to fit window
-        offset_x=(self.width()-DESIGN_W*scale)/2
-        offset_y=(self.height()-DESIGN_H*scale)/2
-        p.translate(offset_x,offset_y)
-        p.scale(scale,scale)  # ignore Windows DPI completely
-        if self.mode=="keyable":
-            p.fillRect(0,0,DESIGN_W,DESIGN_H,self.bg_color)
+            self.repaint()
+
+
+    def paintEvent(self, event):
+        DESIGN_W = 1920
+        DESIGN_H = 1080
+
+        p = QPainter(self)
+
+        # --- CLEAR PREVIOUS FRAME ---
+        if self.mode == "transparent":
+            p.setCompositionMode(QPainter.CompositionMode_Source)
+            p.fillRect(self.rect(), Qt.transparent)
+            p.setCompositionMode(QPainter.CompositionMode_SourceOver)
+
+        p.setRenderHints(
+            QPainter.Antialiasing |
+            QPainter.TextAntialiasing
+        )
+
+        scale = min(
+            self.width() / DESIGN_W,
+            self.height() / DESIGN_H
+        )
+
+        offset_x = (self.width() - DESIGN_W * scale) / 2
+        offset_y = (self.height() - DESIGN_H * scale) / 2
+
+        p.translate(offset_x, offset_y)
+        p.scale(scale, scale)
+
+        if self.mode == "keyable":
+            p.fillRect(0, 0, DESIGN_W, DESIGN_H, self.bg_color)
+
         if self.show_basketball_intro:
             self.draw_basketball_intro(p)
+
         if self.show_basketball_scorebug:
             self.draw_basketball_scorebug(p)
+
         if self.show_basketball_breakboard:
             self.draw_basketball_breakboard(p)
-        if self.state.breakboard_timer>0:
+
+        if self.state.breakboard_timer > 0:
             self.draw_basketball_breakboard(p)
+
         if self.show_basketball_final:
             self.draw_basketball_final(p)
-            return
     def draw_basketball_intro(self, p):
         left_x = 550
         left_w = 400
@@ -3077,7 +3162,7 @@ class BasketballScoreboard(QWidget):
             p.setFont(self.score_font)
             p.setPen(Qt.white)
             p.drawText(left_x+220,990,120,70,Qt.AlignCenter,str(self.state.away_pts))
-            self.draw_timeout_rects(p,left_x+230,993,self.state.away_timeouts_basketball)
+            self.draw_basketball_timeout_rects(p,left_x+230,993,self.state.away_timeouts_basketball)
             p.setFont(self.record_font)
             p.setPen(Qt.white)
             font_metrics = QFontMetrics(p.font())
@@ -3211,7 +3296,7 @@ class BasketballScoreboard(QWidget):
                 opacity = (progress - fade_delay) / (1.0 - fade_delay)
             opacity = min(max(opacity, 0.0), 1.0)
             p.setOpacity(opacity)
-            self.draw_timeout_rects(p, 999 + 85, 993, self.state.home_timeouts_basketball)
+            self.draw_basketball_timeout_rects(p, 999 + 85, 993, self.state.home_timeouts_basketball)
             p.setFont(self.score_font)
             p.setPen(Qt.white)
             p.drawText(right_x- 90, 990, curr_width, 70, Qt.AlignCenter, str(self.state.home_pts))
@@ -3579,1123 +3664,19 @@ class BasketballScoreboard(QWidget):
                 self.draw_upper_event_text(p, left_x+45, 745, self.state.upperbb_event_text_basketball) 
             p.setOpacity(1.0)
             p.end()
-    def draw_circular_outline(p: QPainter, x: float, y: float, radius: float):
-        rect = QRectF(x - radius, y - radius, 2*radius, 2*radius)
-        pen_top = QPen(QColor("white"), 2)
-        pen_top.setStyle(Qt.SolidLine)
-        p.setPen(pen_top)
-        p.drawArc(rect, 0 * 16, 180 * 16)  # top half
-        pen_bottom = QPen(QColor("white"), 2)
-        pen_bottom.setStyle(Qt.DashLine)
-        p.setPen(pen_bottom)
-        p.drawArc(rect, 180 * 16, 180 * 16)  # bottom half
-
-    def draw_top_gloss(self, p: QPainter, x, y, w, h):
-        gloss_h = int(h * 0.35)
-        gloss_y = int(y + h * 0.12)
-        grad = QLinearGradient(x, gloss_y, x + w, gloss_y)
-        grad.setColorAt(0.00, QColor(255, 255, 255, 0))
-        grad.setColorAt(0.20, QColor(255, 255, 255, 50))
-        grad.setColorAt(0.50, QColor(255, 255, 255, 70))  # brightest middle
-        grad.setColorAt(0.80, QColor(255, 255, 255, 50))
-        grad.setColorAt(1.00, QColor(255, 255, 255, 0))
-        p.save()
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(grad))
-        p.drawRect(int(x), gloss_y, int(w), gloss_h)
-        p.restore()
-    def draw_flat_segment(self, p, x, y, w, h, left_color: QColor, right_color: QColor):
-        grad = QLinearGradient(x, y, x + w, y)
-        grad.setColorAt(0.0, left_color)
-        grad.setColorAt(1.0, right_color)
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(grad))
-        p.drawRect(x, y, w, h)
-    def draw_flat_segment_home(self, p, x, y, w, h, left_color: QColor, right_color: QColor):
-        grad = QLinearGradient(x + w, y, x, y)
-        grad.setColorAt(0.0, left_color)   # left side (end)
-        grad.setColorAt(1.0, right_color)  # right side (start)
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(grad))
-        p.drawRect(x, y, w, h)
-    def draw_inset_border(self, p: QPainter, x, y, w, h, base_radius=12):
-        inset = 2
-        rx = x + inset
-        ry = y + inset
-        rw = w - inset*2
-        rh = h - inset*2
-        border = QColor("#505355")
-        pen = QPen(border)
-        pen.setWidth(2)     # thickness of the border
-        pen.setJoinStyle(Qt.RoundJoin)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        radius = max(1, base_radius - inset)
-        path = QPainterPath()
-        path.moveTo(rx, ry + radius)
-        path.lineTo(rx, ry + rh - radius)
-        path.quadTo(rx, ry + rh, rx + radius, ry + rh)
-        path.lineTo(rx + rw - radius, ry + rh)
-        path.quadTo(rx + rw, ry + rh, rx + rw, ry + rh - radius)
-        path.lineTo(rx + rw, ry + radius)
-        p.drawPath(path)
-        p.setPen(Qt.NoPen)        
-    def draw_round_segment(self, p, x, y, w, h, color):
-        radius = h / 1.5
-        p.setPen(Qt.NoPen)
-        p.setBrush(QColor(color))
-        p.drawRoundedRect(x, y, w, h, radius, radius)
-        gloss_height = int(h * 1)  # top portion of gloss
-        grad = QLinearGradient(x, y, x, y + gloss_height)
-        grad.setColorAt(0.0, QColor(255, 255, 255, 110))  # top bright
-        grad.setColorAt(1.0, QColor(255, 255, 255, 0))    # fade out
-        p.setBrush(grad)
-        p.setPen(Qt.NoPen)
-        p.drawRoundedRect(x, y, w, gloss_height,radius, radius)
-    def draw_rounded_rect(self, p: QPainter, x, y, w, h, color: QColor):
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(color))
-        radius = 12
-        path = QPainterPath()
-        path.moveTo(x, y)
-        path.lineTo(x + w, y)
-        path.lineTo(x + w, y + h - radius)
-        path.quadTo(x + w, y + h, x + w - radius, y + h)
-        path.lineTo(x + radius, y + h)
-        path.quadTo(x, y + h, x, y + h - radius)
-        path.lineTo(x, y)
-        p.drawPath(path)
-    def draw_timerounded_rect(self, p: QPainter, x, y, w, h, color: QColor):
-        radius = 12
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(color))
-        path = QPainterPath()
-        path.moveTo(x, y)
-        path.lineTo(x + w, y)
-        path.lineTo(x + w, y + h - radius)
-        path.quadTo(x + w, y + h, x + w - radius, y + h)
-        path.lineTo(x + radius, y + h)
-        path.quadTo(x, y + h, x, y + h - radius)
-        path.lineTo(x, y)
-        p.drawPath(path)
-        border = QColor("#3a3c3e")
-        p.save()
-        pen = QPen(border, 2)
-        pen.setJoinStyle(Qt.RoundJoin)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        inset = 1
-        boost = 0  
-        path2 = QPainterPath()
-        start_y = y + radius + inset - boost
-        if start_y < y:   # safety clamp so it doesn't go above rect
-            start_y = y + inset
-        path2.moveTo(x + inset, start_y)
-        path2.lineTo(x + inset, y + h - radius - inset)
-        path2.quadTo(x + inset,y + h - inset,x + radius + inset,y + h - inset)
-        path2.lineTo(x + w - radius - inset, y + h - inset)
-        path2.quadTo(x + w - inset,y + h - inset,x + w - inset,y + h - radius - inset)
-        path2.lineTo(x + w - inset, start_y)
-        p.drawPath(path2)
-        p.restore()
-    def draw_open_triangle(self, p: QPainter, x, y, size, color: QColor):
-        p.setBrush(Qt.NoBrush)
-        p.setPen(QPen(color))
-
-        top = QPointF(x + size / 2, y)
-        left = QPointF(x, y + size)
-        right = QPointF(x + size, y + size)
-
-        # left side
-        p.drawLine(top, left)
-        # right side
-        p.drawLine(top, right)
-    def draw_triangle_line(self, p: QPainter, x, y, size, count, spacing, color: QColor):
-        for i in range(count):
-            tx = x + i * (size + spacing)
-            self.draw_open_triangle(p, tx, y, size, color)
-    def draw_triangle_grid(self, p: QPainter, x, y, size, count_per_line, spacing, color: QColor):
-        for row in range(6):
-            ty = y + row * 4
-            self.draw_triangle_line(
-                p,
-                x,
-                ty,
-                size,
-                count_per_line,
-                spacing,
-                color
-            )
-
-
-    def clip_to_rect(self, p, x, y, w, h):
-        path = QPainterPath()
-        rect = QRectF(x, y, w, h)
-        path.addRect(rect)
-        p.setClipPath(path)
-    def draw_leftrounded_rect(self, p: QPainter, x, y, w, h, color: QColor):
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(color))
-        radius = 12
-        path = QPainterPath()
-        path.moveTo(x + radius, y)
-        path.lineTo(x + w, y)
-        path.lineTo(x + w, y + h)
-        path.lineTo(x + radius, y + h)
-        path.quadTo(x, y + h, x, y + h - radius)
-        path.lineTo(x, y + radius)
-        path.quadTo(x, y, x + radius, y)
-        p.drawPath(path)       
-    def draw_rightrounded_rect(self, p: QPainter, x, y, w, h, color: QColor):
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(color))
-        radius = 12
-        path = QPainterPath()
-        path.moveTo(x, y)
-        path.lineTo(x + w - radius, y)
-        path.quadTo(x + w, y, x + w, y + radius)
-        path.lineTo(x + w, y + h - radius)
-        path.quadTo(x + w, y + h, x + w - radius, y + h)
-        path.lineTo(x, y + h)
-        path.lineTo(x, y)
-        p.drawPath(path)
-    def draw_rect(self, p, x, y, w, h, color):
-        p.setPen(Qt.NoPen)
-        p.setBrush(color)
-        p.drawRect(int(x), int(y), int(w), int(h))
-    def draw_left_triangle(self, p: QPainter, x, y, w, h, color: QColor):
-        path = QPainterPath()
-        path.moveTo(x - w / 3, y)          # tip (left)
-        path.lineTo(x + w / 3, y - h / 3)  # top-right
-        path.lineTo(x + w / 3, y + h / 3)  # bottom-right
-        path.closeSubpath()
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(color))
-        p.drawPath(path)
-    def draw_right_triangle(self, p: QPainter, x, y, w, h, color: QColor):
-        path = QPainterPath()
-        path.moveTo(x + w / 3, y)          # tip (right)
-        path.lineTo(x - w / 3, y - h / 3)  # top-left
-        path.lineTo(x - w / 3, y + h / 3)  # bottom-left
-        path.closeSubpath()
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(color))
-        p.drawPath(path)
-    def draw_transparent_to_black_rect(self, p: QPainter, x, y, w, h, radius: int = 12):
-        grad = QLinearGradient(x, y, x + w, y + h)
-        grad.setColorAt(0.0, QColor(0, 0, 0, 0))   # alpha = 0
-        grad.setColorAt(0.5, QColor(0, 0, 0, 200))
-        grad.setColorAt(1.0, QColor(0, 0, 0, 255))
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(grad))
-        p.drawRoundedRect(QRect(int(x), int(y), int(w), int(h)), radius, radius)
-    def draw_fully_gradient_rect(self, p: QPainter, x, y, w, h, color: QColor, radius: int = 12):
-        darker = color.darker(225)   # 175 = 75% darker; adjust if needed
-        sdarker = color.darker(125) 
-        grad = QLinearGradient(x, y, x + w, y)
-        grad.setColorAt(0.0, color)
-        grad.setColorAt(0.5, darker)
-        grad.setColorAt(1.0, darker)
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(grad))
-        p.drawRoundedRect(QRect(int(x), int(y), int(w), int(h)), radius, radius)
-    def draw_panel_base(self, p, x, y, w, h, color: QColor, thickness: int =5):
-        radius = 10
-        pen = QPen(color)
-        pen.setWidth(thickness)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        p.drawRoundedRect(x, y, w, h, radius , radius)
-    def draw_ppanel_base(self, p, x, y, w, h, color: QColor, thickness: int =3):
-        radius = 10
-        pen = QPen(color)
-        pen.setWidth(thickness)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        p.drawRoundedRect(x, y, w, h, radius , radius)
-    def draw_fpanel_base(self, p, x, y, w, h, color: QColor, thickness: int =2):
-        radius = 10
-        pen = QPen(color)
-        pen.setWidth(thickness)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        p.drawRoundedRect(x, y, w, h, radius , radius)   
-    def draw_away_notch(self, p: QPainter, x, y, w, h, color: QColor):
-        offset = h * 0.25
-        p.setPen(Qt.NoPen)
-        p.setBrush(color)
-        path = QPainterPath()
-        path.moveTo(x, y)
-        path.lineTo(x + w, y + offset)
-        path.lineTo(x + w, y + h - offset )
-        path.lineTo(x, y + h)
-        path.closeSubpath
-        p.drawPath(path)
-    def draw_home_notch(self, p: QPainter, x, y, w, h, color: QColor):
-        offset = h * 0.25
-        p.save()
-        p.setPen(Qt.NoPen)
-        p.setBrush(color)
-        path = QPainterPath()
-        path.moveTo(x + w, y)                 # top-right
-        path.lineTo(x, y + offset)            # top-left inward
-        path.lineTo(x, y + h - offset)        # bottom-left inward
-        path.lineTo(x + w, y + h)             # bottom-right
-        path.closeSubpath()
-        p.drawPath(path)
-        p.restore()
-    def draw_bottom_event_text(self, p: QPainter, x: int, y: int, text: str):
-        if not text:
-            return
-        w = 640
-        h= 22
-        p.setFont(self.event_font)
-        p.setPen(Qt.white)
-        p.drawText(QRect(x, y, w, h), Qt.AlignCenter, text)
-    def draw_upper_event_text(self, p: QPainter, x: int, y: int, text: str):
-        if not text:
-            return
-        w = 640
-        h= 42
-        p.setFont(self.introupper_font)
-        p.setPen(Qt.white)
-        p.drawText(QRect(x, y, w, h), Qt.AlignCenter, text)
-    def draw_bbevent_text(self, p: QPainter, x: int, y: int, text: str):
-        if not text:
-            return
-        w = 240
-        h= 40
-        p.setFont(self.upperevent_font)
-        p.setPen(Qt.white)
-        p.drawText(QRect(x, y, w, h), Qt.AlignVCenter | Qt.AlignHCenter, text)
-    def draw_bevent_text(self, p: QPainter, x: int, y: int, text: str):
-        if not text:
-            return
-        w = 240
-        h= 40
-        p.setFont(self.scoreevent_font)
-        p.setPen(Qt.white)
-        p.drawText(QRect(x, y, w, h), Qt.AlignVCenter | Qt.AlignHCenter, text)
-    
-    def draw_timeout_popup(self, p: QPainter, x, y, text):
-        w = 240
-        h = 45
-        radius = 7
-        p.setFont(self.timeout_font)
-        p.setPen(Qt.white)
-        p.drawText(QRect(x, y, w, h), Qt.AlignCenter, text)
-    def draw_panel_glow(self, p, x, y, w, h, color: QColor):
-        radius = 10
-        glow_rect = QRectF(x+2, y+2, w-4, h-4)
-        base = QColor(color)
-        color_outer_rim = QColor(color).darker(100)
-        color_inner_fill = QColor(color).lighter(150)
-        rim_grad = QLinearGradient(
-        glow_rect.left(), glow_rect.center().y(),
-        glow_rect.right(), glow_rect.center().y())
-        rim_grad.setColorAt(0.00, color_outer_rim)
-        rim_grad.setColorAt(0.12, color_outer_rim)
-        rim_grad.setColorAt(0.20, color_outer_rim)
-        rim_grad.setColorAt(0.80, color_outer_rim)
-        rim_grad.setColorAt(0.88, color_outer_rim)
-        rim_grad.setColorAt(1.00, color_outer_rim)
-        p.setPen(Qt.NoPen)
-        p.setBrush(rim_grad)
-        p.drawRoundedRect(glow_rect, radius, radius)
-        fill_grad = QLinearGradient(
-        glow_rect.left(), glow_rect.center().y(),
-        glow_rect.right(), glow_rect.center().y())
-        fill_grad.setColorAt(0.00, color_outer_rim)
-        fill_grad.setColorAt(0.15, color_outer_rim)
-        fill_grad.setColorAt(0.50, color_inner_fill)
-        fill_grad.setColorAt(0.85, color_inner_fill)
-        fill_grad.setColorAt(1.00, color_inner_fill)
-        p.setBrush(fill_grad)
-        p.drawRoundedRect(glow_rect, radius, radius)
-        white_strong = QColor(255, 255, 255, 160)
-        white_soft   = QColor(255, 255, 255, 60)
-        bloom = QLinearGradient(
-        glow_rect.center().x(), glow_rect.bottom(),
-        glow_rect.center().x(), glow_rect.top())
-        bloom.setColorAt(0.00, color_outer_rim)  # base edge
-        bloom.setColorAt(0.20, color_outer_rim)    # fade
-        bloom.setColorAt(0.45, Qt.transparent)  # vanish
-        p.setBrush(bloom)
-        p.drawRoundedRect(glow_rect, radius, radius)
-    def format_rank_name(self, rank, name):
-        try:
-            r = int(rank)
-        except:
-            r = 0
-        name = name.upper()
-        if r <= 0:
-            return "", name
-        return str(r), name
-    def draw_top_gloss(self, p: QPainter, x, y, w, h):
-        gloss_h = int(h * 0.35)
-        gloss_y = int(y + h * 0.12)
-        grad = QLinearGradient(x, gloss_y, x + w, gloss_y)
-        grad.setColorAt(0.00, QColor(255, 255, 255, 0))
-        grad.setColorAt(0.20, QColor(255, 255, 255, 50))
-        grad.setColorAt(0.50, QColor(255, 255, 255, 70))  # brightest middle
-        grad.setColorAt(0.80, QColor(255, 255, 255, 50))
-        grad.setColorAt(1.00, QColor(255, 255, 255, 0))
-        p.save()
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(grad))
-        p.drawRect(int(x), gloss_y, int(w), gloss_h)
-        p.restore()
-    def draw_horizontal_glow(p, x, y, w, h, color: QColor):
-        grad = QLinearGradient(x, y, x + w, y)
-        c0 = QColor(color)
-        c0.setAlpha(0)
-        c1 = QColor(color)
-        c1.setAlpha(160)
-        c2 = QColor(color)
-        c2.setAlpha(0)
-        grad.setColorAt(0.0, c0)
-        grad.setColorAt(0.50, c1)
-        grad.setColorAt(1.0, c2)
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(grad))
-        p.drawRoundedRect(x, y, w, h, h/2, h/2)
-    def draw_round_left(self, p: QPainter, x, y, w, h, color: QColor, r=10):
-        p.setPen(Qt.NoPen)
-        p.setBrush(color)
-        path = QPainterPath()
-        path.moveTo(x + r, y)
-        path.lineTo(x + w, y)
-        path.lineTo(x + w, y + h)
-        path.lineTo(x + r, y + h)
-        path.quadTo(x, y + h, x, y + h - r)
-        path.lineTo(x, y + r)
-        p.drawPath(path)
-    def draw_rounded_rect(self, p: QPainter, x, y, w, h, color: QColor):
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(color))
-        radius = 12
-        path = QPainterPath()
-        path.moveTo(x, y)
-        path.lineTo(x + w, y)
-        path.lineTo(x + w, y + h - radius)
-        path.quadTo(x + w, y + h, x + w - radius, y + h)
-        path.lineTo(x + radius, y + h)
-        path.quadTo(x, y + h, x, y + h - radius)
-        path.lineTo(x, y)
-        p.drawPath(path)
-    def draw_introround_left(self, p: QPainter, x, y, w, h, color: QColor, r=10):
-        path = QPainterPath()
-        path.moveTo(x + r, y)
-        path.lineTo(x + w, y)
-        path.lineTo(x + w, y + h)
-        path.lineTo(x + r, y + h)
-        path.quadTo(x, y + h, x, y + h - r)
-        path.lineTo(x, y + r)
-        path.quadTo(x, y, x + r, y)
-        p.save()
-        p.setPen(Qt.NoPen)
-        grad = QLinearGradient(x, y, x + w, y)
-        darker = color.darker(150)
-        darke = color.darker(175)
-        sdarker = color.darker(200)
-        dark = color.darker(225)
-        darkest = color.darker(250)
-        grad.setColorAt(0.0, darker)      # left team color
-        grad.setColorAt(0.2, darke)
-        grad.setColorAt(0.4, sdarker)     # darker
-        grad.setColorAt(0.4, dark)
-        grad.setColorAt(0.6, darkest)
-        grad.setColorAt(0.8, QColor(0,0,0))    # very dark
-        grad.setColorAt(1.0, QColor(0,0,0))  # black
-        p.setBrush(QBrush(grad))
-        p.drawPath(path)
-        p.restore()
-    def draw_semitransparent_rounded_rect(self, p: QPainter, x, y, w, h, color: QColor):
-        c = QColor(color)
-        c.setAlpha(225)
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(c))
-        radius = 12
-        path = QPainterPath()
-        path.moveTo(x, y)
-        path.lineTo(x + w, y)
-        path.lineTo(x + w, y + h - radius)
-        path.quadTo(x + w, y + h, x + w - radius, y + h)
-        path.lineTo(x + radius, y + h)
-        path.quadTo(x, y + h, x, y + h - radius)
-        path.lineTo(x, y)
-        p.drawPath(path)
-    def draw_round_right(self, p: QPainter, x, y, w, h, color: QColor, r=10):
-        p.setPen(Qt.NoPen)
-        p.setBrush(color)
-        path = QPainterPath()
-        path.moveTo(x, y)
-        path.lineTo(x + w - r, y)
-        path.quadTo(x + w, y, x + w, y + r)
-        path.lineTo(x + w, y + h - r)
-        path.quadTo(x + w, y + h, x + w - r, y + h)
-        path.lineTo(x, y + h)
-        path.lineTo(x, y)
-        p.drawPath(path)
-    def draw_introround_right(self, p: QPainter, x, y, w, h, color: QColor, r=10):
-        path = QPainterPath()
-        path.moveTo(x, y)
-        path.lineTo(x + w - r, y)
-        path.quadTo(x + w, y, x + w, y + r)
-        path.lineTo(x + w, y + h - r)
-        path.quadTo(x + w, y + h, x + w - r, y + h)
-        path.lineTo(x, y + h)
-        path.lineTo(x, y)
-        p.save()
-        p.setPen(Qt.NoPen)
-        darker = color.darker(150)
-        darke = color.darker(175)
-        sdarker = color.darker(200)
-        dark = color.darker(225)
-        darkest = color.darker(250)
-        grad = QLinearGradient(x + w, y, x, y)
-        grad.setColorAt(0.0, darker)     
-        grad.setColorAt(0.2, darke)
-        grad.setColorAt(0.4, sdarker)    
-        grad.setColorAt(0.4, dark)
-        grad.setColorAt(0.6, darkest)
-        grad.setColorAt(0.8, QColor(0,0,0))   
-        grad.setColorAt(1.0, QColor(0,0,0)) 
-        p.setBrush(QBrush(grad))
-        p.drawPath(path)
-        p.restore()
-    def draw_bottom_round_rect(self, p: QPainter, x, y, w, h, color: QColor, radius=12):
-        p.setPen(Qt.NoPen)
-        p.setBrush(color)
-        path = QPainterPath()
-        path.moveTo(x, y)
-        path.lineTo(x + w, y)
-        path.lineTo(x + w, y + h - radius)
-        path.quadTo(x + w, y + h,x + w - radius, y + h)
-        path.lineTo(x + radius, y + h)
-        path.quadTo(x, y + h,x, y + h - radius)
-        path.lineTo(x, y)
-        p.drawPath(path)
-    def draw_glow_top_round(self, p: QPainter, x, y, w, h, color: QColor, thickness=2):
-        r = 10
-        glow_radius = 18
-        img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        img.fill(Qt.transparent)
-        offp = QPainter(img)
-        offp.setRenderHint(QPainter.Antialiasing, True)
-        grad = QRadialGradient(w/2, h/2, max(w, h) * 0.75)
-        c1 = QColor(color)
-        c1.setAlpha(160)
-        c2 = QColor(color)
-        c2.setAlpha(0)
-        grad.setColorAt(0.00, c1)
-        grad.setColorAt(0.45, c1)
-        grad.setColorAt(1.00, c2)
-        offp.setPen(Qt.NoPen)
-        offp.setBrush(grad)
-        path = QPainterPath()
-        path.moveTo(r, 0)
-        path.quadTo(0, 0, 0, r)
-        path.lineTo(0, h)
-        path.lineTo(w, h)
-        path.lineTo(w, r)
-        path.quadTo(w, 0, w - r, 0)
-        path.lineTo(r, 0)
-        offp.drawPath(path)
-        offp.end()
-        blurred = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        blurred.fill(Qt.transparent)
-        scene = QGraphicsScene()
-        item = scene.addPixmap(QPixmap.fromImage(img))
-        blur = QGraphicsBlurEffect()
-        blur.setBlurRadius(glow_radius)
-        item.setGraphicsEffect(blur)
-        rp = QPainter(blurred)
-        scene.render(rp)
-        rp.end()
-        p.drawImage(x, y, blurred)
-        p.setRenderHint(QPainter.Antialiasing, True)
-        pen = QPen(color, thickness)
-        pen.setCapStyle(Qt.RoundCap)
-        pen.setJoinStyle(Qt.RoundJoin)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        outline = QPainterPath()
-        outline.moveTo(x + r, y)
-        outline.quadTo(x, y, x, y + r)
-        outline.lineTo(x, y + h)
-        outline.lineTo(x + w, y + h)
-        outline.lineTo(x + w, y + r)
-        outline.quadTo(x + w, y, x + w - r, y)
-        outline.lineTo(x + r, y)
-        p.drawPath(outline)
-    def draw_glow_round_left(self, p: QPainter, x, y, w, h, color: QColor, thickness=2):
-        r = 10
-        glow_radius = 18
-        img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        img.fill(Qt.transparent)
-        offp = QPainter(img)
-        offp.setRenderHint(QPainter.Antialiasing, True)
-        grad = QRadialGradient(w/2, h/2, max(w, h) * 0.75)
-        c1 = QColor(color)
-        c1.setAlpha(160)
-        c2 = QColor(color)
-        c2.setAlpha(0)
-        grad.setColorAt(0.00, c1)
-        grad.setColorAt(0.45, c1)
-        grad.setColorAt(1.00, c2)
-        offp.setPen(Qt.NoPen)
-        offp.setBrush(grad)
-        path = QPainterPath()
-        path.moveTo(r, 0)
-        path.quadTo(0, 0, 0, r)
-        path.lineTo(0, h - r)
-        path.quadTo(0, h, r, h)
-        path.lineTo(w, h)         
-        path.lineTo(w, 0)         
-        path.lineTo(r, 0)
-        offp.drawPath(path)
-        offp.end()
-        blurred = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        blurred.fill(Qt.transparent)
-        scene = QGraphicsScene()
-        item = scene.addPixmap(QPixmap.fromImage(img))
-        blur = QGraphicsBlurEffect()
-        blur.setBlurRadius(glow_radius)
-        item.setGraphicsEffect(blur)
-        rp = QPainter(blurred)
-        scene.render(rp)
-        rp.end()
-        p.drawImage(x, y, blurred)
-        p.setRenderHint(QPainter.Antialiasing, True)
-        pen = QPen(color, thickness)
-        pen.setCapStyle(Qt.RoundCap)
-        pen.setJoinStyle(Qt.RoundJoin)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        outline = QPainterPath()
-        outline.moveTo(x + r, y)
-        outline.quadTo(x, y, x, y + r)
-        outline.lineTo(x, y + h - r)
-        outline.quadTo(x, y + h, x + r, y + h)
-        outline.lineTo(x + w, y + h)
-        outline.moveTo(x + w, y)
-        outline.lineTo(x + r, y)
-        p.drawPath(outline)
-    def draw_glow_round_ddleft(self, p: QPainter, x, y, w, h, color: QColor, thickness=2):
-        r = 10
-        glow_radius = 18
-        top_inset = 125   # <-- adjustable top inset
-        img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        img.fill(Qt.transparent)
-        offp = QPainter(img)
-        offp.setRenderHint(QPainter.Antialiasing, True)
-        grad = QLinearGradient(0, h/2, w*0.5, h/2)
-        c1 = QColor(color)
-        c1.setAlpha(200)
-        c2 = QColor(color)
-        c2.setAlpha(0)
-        grad.setColorAt(0.0, c1)
-        grad.setColorAt(1.0, c2)
-        offp.setPen(Qt.NoPen)
-        offp.setBrush(grad)
-        path = QPainterPath()
-        path.moveTo(r, 0)
-        path.quadTo(0, 0, 0, r)
-        path.lineTo(0, h - r)
-        path.quadTo(0, h, r, h)
-        path.lineTo(w, h)
-        path.lineTo(w, 0)
-        path.closeSubpath()
-        offp.drawPath(path)
-        offp.end()
-        blurred = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        blurred.fill(Qt.transparent)
-        scene = QGraphicsScene()
-        item = scene.addPixmap(QPixmap.fromImage(img))
-        blur = QGraphicsBlurEffect()
-        blur.setBlurRadius(glow_radius)
-        item.setGraphicsEffect(blur)
-        rp = QPainter(blurred)
-        scene.render(rp)
-        rp.end()
-        p.drawImage(x, y, blurred)
-        p.setRenderHint(QPainter.Antialiasing, True)
-        pen = QPen(color, thickness)
-        pen.setCapStyle(Qt.RoundCap)
-        pen.setJoinStyle(Qt.RoundJoin)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        outline = QPainterPath()
-        outline.moveTo(x + w, y + h)
-        outline.lineTo(x + r, y + h)
-        outline.quadTo(x, y + h, x, y + h - r)
-        outline.lineTo(x, y + r)
-        outline.quadTo(x, y, x + r, y)
-        outline.lineTo(x + top_inset, y)
-        p.drawPath(outline)
-    def draw_glow_round_ddright(self, p: QPainter, x, y, w, h, color: QColor, thickness=1):
-        r = 10
-        glow_radius = 18
-        top_inset = 25   # <-- adjustable top indent
-        img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        img.fill(Qt.transparent)
-        offp = QPainter(img)
-        offp.setRenderHint(QPainter.Antialiasing, True)
-        grad = QLinearGradient(w, h/2, w*0.5, h/2)
-        c1 = QColor(color)
-        c1.setAlpha(200)  # strong inside
-        c2 = QColor(color)
-        c2.setAlpha(0)    # fade inside
-        grad.setColorAt(0.00, c1)
-        grad.setColorAt(1.00, c2)
-        offp.setPen(Qt.NoPen)
-        offp.setBrush(grad)
-        path = QPainterPath()
-        path.moveTo(0, 0)
-        path.lineTo(w - r, 0)
-        path.quadTo(w, 0, w, r)
-        path.lineTo(w, h - r)
-        path.quadTo(w, h, w - r, h)
-        path.lineTo(0, h)
-        path.closeSubpath()
-        offp.drawPath(path)
-        offp.end()
-        blurred = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        blurred.fill(Qt.transparent)
-        scene = QGraphicsScene()
-        item = scene.addPixmap(QPixmap.fromImage(img))
-        blur = QGraphicsBlurEffect()
-        blur.setBlurRadius(glow_radius)
-        item.setGraphicsEffect(blur)
-        rp = QPainter(blurred)
-        scene.render(rp)
-        rp.end()
-        p.drawImage(x, y, blurred)
-        p.setRenderHint(QPainter.Antialiasing, True)
-        pen = QPen(color, thickness)
-        pen.setCapStyle(Qt.RoundCap)
-        pen.setJoinStyle(Qt.RoundJoin)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        outline = QPainterPath()
-        outline.moveTo(x, y + h)
-        outline.lineTo(x + w - r, y + h)
-        outline.quadTo(x + w, y + h, x + w, y + h - r)
-        outline.lineTo(x + w, y + r)
-        outline.quadTo(x + w, y, x + w - r, y)
-        outline.lineTo(x + top_inset, y)
-        p.drawPath(outline)
-    def draw_glow_round_right(self, p: QPainter, x, y, w, h, color: QColor, thickness=2):
-        r = 10
-        glow_radius = 18
-        img = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        img.fill(Qt.transparent)
-        offp = QPainter(img)
-        offp.setRenderHint(QPainter.Antialiasing, True)
-        grad = QRadialGradient(w/2, h/2, max(w, h) * 0.75)
-        c1 = QColor(color)
-        c1.setAlpha(160)
-        c2 = QColor(color)
-        c2.setAlpha(0)
-        grad.setColorAt(0.00, c1)
-        grad.setColorAt(0.45, c1)
-        grad.setColorAt(1.00, c2)
-        offp.setPen(Qt.NoPen)
-        offp.setBrush(grad)
-        path = QPainterPath()
-        path.moveTo(0, 0)
-        path.lineTo(w - r, 0)
-        path.quadTo(w, 0, w, r)
-        path.lineTo(w, h - r)
-        path.quadTo(w, h, w - r, h)
-        path.lineTo(0, h)
-        offp.drawPath(path)
-        offp.end()
-        blurred = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
-        blurred.fill(Qt.transparent)
-        scene = QGraphicsScene()
-        item = scene.addPixmap(QPixmap.fromImage(img))
-        blur = QGraphicsBlurEffect()
-        blur.setBlurRadius(glow_radius)
-        item.setGraphicsEffect(blur)
-        rp = QPainter(blurred)
-        scene.render(rp)
-        rp.end()
-        p.drawImage(x, y, blurred)
-        p.setRenderHint(QPainter.Antialiasing, True)
-        pen = QPen(color, thickness)
-        pen.setCapStyle(Qt.RoundCap)
-        pen.setJoinStyle(Qt.RoundJoin)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)        
-        outline = QPainterPath()
-        outline.moveTo(x, y)
-        outline.lineTo(x + w - r, y)
-        outline.quadTo(x + w, y, x + w, y + r)
-        outline.lineTo(x + w, y + h - r)
-        outline.quadTo(x + w, y + h, x + w - r, y + h)
-        outline.lineTo(x, y + h)
-        p.drawPath(outline)
-    def draw_inner_edge_glow(self,p:QPainter,x,y,w,h,color:QColor):
-        img=QImage(w,h,QImage.Format_ARGB32_Premultiplied)
-        img.fill(Qt.transparent)
-        off=QPainter(img)
-        off.setRenderHint(QPainter.Antialiasing,True)
-        r=h*0.22
-        path=QPainterPath()
-        path.addRoundedRect(0,0,w,h,r,r)
-        off.setClipPath(path)
-        grad=QLinearGradient(0,0,w,0)
-        grad.setColorAt(0.00,color)
-        grad.setColorAt(0.28,QColor(255,255,255))
-        grad.setColorAt(0.55,QColor(255,255,255,0))
-        grad.setColorAt(1.00,QColor(0,0,0,0))
-        off.setPen(Qt.NoPen)
-        off.setBrush(grad)
-        strip_h=int(h*0.45)
-        off.drawRect(0,(h-strip_h)//2,w,strip_h)
-        off.end()
-        blurred=QImage(w,h,QImage.Format_ARGB32_Premultiplied)
-        blurred.fill(Qt.transparent)
-        scene=QGraphicsScene()
-        item=scene.addPixmap(QPixmap.fromImage(img))
-        blur=QGraphicsBlurEffect()
-        blur.setBlurRadius(10)
-        item.setGraphicsEffect(blur)
-        rp=QPainter(blurred)
-        scene.render(rp)
-        rp.end()
-        p.drawImage(x,y,blurred)
-    def draw_timeout_rects(self, p: QPainter, x: int, y: int, remaining: int, max_count: int = 5):
-        size = 6
-        spacing = 3
-        remaining = max(0, min(max_count, int(remaining)))
-        p.setPen(Qt.NoPen)  
-        for i in range(max_count):
-            cy = y + (max_count - 1 - i) * (size + spacing)
-            filled = (i < remaining)
-            p.setBrush(QColor("white") if filled else QColor(255, 255, 255, 60))
-            p.drawEllipse(int(x), int(cy), size, size)
-    def draw_fully_gradient_rect(self,p:QPainter,x,y,w,h,color:QColor,radius:int=12):
-        darker=color.darker(175)
-        sdarker=color.darker(125)
-        grad=QLinearGradient(x,y,x+w,y)
-        grad.setColorAt(0.0,color)
-        grad.setColorAt(0.5,sdarker)
-        grad.setColorAt(1.0,darker)
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(grad))
-        p.drawRoundedRect(QRect(int(x),int(y),int(w),int(h)),radius,radius)
-    def draw_top_flat_rect(self,p:QPainter,x,y,w,h,color:QColor,radius:int=12):
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(color))
-        path=QPainterPath()
-        path.moveTo(x,y)
-        path.lineTo(x+w,y)
-        path.lineTo(x+w,y+h-radius)
-        path.quadTo(x+w,y+h,x+w-radius,y+h)
-        path.lineTo(x+radius,y+h)
-        path.quadTo(x,y+h,x,y+h-radius)
-        path.lineTo(x,y)
-        p.drawPath(path)
-    def draw_fully_grounded_rect(self,p:QPainter,x,y,w,h,radius:int=12):
-        grad=QLinearGradient(x,y,x+w,y)
-        grad.setColorAt(0.0,QColor(0,0,0))
-        grad.setColorAt(0.5,QColor(128,128,128))
-        grad.setColorAt(1.0,QColor(0,0,0))
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(grad))
-        p.drawRoundedRect(QRect(int(x),int(y),int(w),int(h)),radius,radius)
-    def draw_fully_rounded_rect(self, p: QPainter, x, y, w, h, color: QColor):
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(color))
-        radius = 12 
-        p.drawRoundedRect(QRect(int(x), int(y), int(w), int(h)), radius, radius)
-    def draw_normal_rect(self, p: QPainter, x, y, w, h, color: QColor):
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(color))
-        p.drawRect(QRect(int(x), int(y), int(w), int(h)))
-    def draw_transparentnormal_rect(self, p: QPainter, x, y, w, h, color: QColor):
-        p.setPen(Qt.NoPen)
-        color.setAlpha(240)
-        p.setBrush(QBrush(color))
-        p.drawRect(QRect(int(x), int(y), int(w), int(h)))
-
-    def draw_top_right_flat(self,p:QPainter,x,y,w,h,color:QColor):
-        radius=12
-        path=QPainterPath()
-        path.moveTo(x+radius,y)
-        path.lineTo(x+w,y)
-        path.lineTo(x+w,y+h-radius)
-        path.quadTo(x+w,y+h,x+w-radius,y+h)
-        path.lineTo(x+radius,y+h)
-        path.quadTo(x,y+h,x,y+h-radius)
-        path.lineTo(x,y+radius)
-        path.quadTo(x,y,x+radius,y)
-        path.closeSubpath()
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(color))
-        p.drawPath(path)
-    def draw_rect_shadow(self, p, x, y, w, h, color):
-        shadow_color = QColor(255,255,255,140)
-        for i in range(6):
-            shadow_color.setAlpha(80 - i*12)
-            p.setBrush(shadow_color)
-            p.drawRect(int(x + 4 + i), int(y + 4 + i), int(w - 2*i), int(h - 2*i))
-        p.setBrush(color)
-        p.drawRect(int(x), int(y), int(w), int(h))
-    def draw_possession_text(self, p: QPainter, x, y, color: QColor):
-        p.setPen(color)
-        font = p.font()
-        font.setPointSize(11)   # adjust if needed
-        font.setBold(True)
-        p.setFont(font)
-        p.drawText(x, y, "POSS")
-    def draw_fouls_text(self, p: QPainter, x, y, color: QColor):
-        p.setPen(color)
-        font = p.font()
-        font.setPointSize(11)   # adjust if needed
-        font.setBold(True)
-        p.setFont(font)
-        p.drawText(x, y, "Fouls")
-    def draw_ffully_rounded_rect(self, p: QPainter, x, y, w, h, radius: int = 10):
-        p.save()
-        p.setPen(Qt.NoPen)
-        grad = QLinearGradient(x, y, x, y + h)
-        grad.setColorAt(0.0, QColor(200, 200, 200))
-        grad.setColorAt(0.2, QColor(40, 40, 40))
-        grad.setColorAt(0.4, QColor(40, 40, 40))
-        grad.setColorAt(0.5, QColor(40, 40, 40))
-        grad.setColorAt(0.6, QColor(40, 40, 40))
-        grad.setColorAt(0.8, QColor(40, 40, 40))
-        grad.setColorAt(1.0, QColor(200, 200, 200))
-        p.setBrush(QBrush(grad))
-        p.drawRoundedRect(QRect(int(x), int(y), int(w), int(h)), radius, radius)
-        p.restore()
-    def draw_top_rounded_rect(self, p: QPainter, x, y, w, h, color: QColor, radius: int = 12):
-        p.setPen(Qt.NoPen)
-        p.setBrush(color)
-        path = QPainterPath()
-        path.moveTo(x + radius, y)
-        path.lineTo(x + w - radius, y)
-        path.quadTo(x + w, y, x + w, y + radius)
-        path.lineTo(x + w, y + h)
-        path.lineTo(x, y + h)
-        path.lineTo(x, y + radius)
-        path.quadTo(x, y, x + radius, y)
-        path.closeSubpath()
-        p.drawPath(path)
-    def draw_rect_shadow(self, p, x, y, w, h, color):
-        shadow_color = QColor(255,255,255,140)
-        for i in range(6):
-            shadow_color.setAlpha(80 - i*12)
-            p.setBrush(shadow_color)
-            p.drawRect(int(x + 4 + i), int(y + 4 + i), int(w - 2*i), int(h - 2*i))
-        p.setBrush(color)
-        p.drawRect(int(x), int(y), int(w), int(h))
-    def draw_fully_gradient_rect(self, p: QPainter, x, y, w, h, color: QColor, radius: int = 12):
-        darker = color.darker(225)   # 175 = 75% darker; adjust if needed
-        sdarker = color.darker(125) 
-        grad = QLinearGradient(x, y, x + w, y)
-        grad.setColorAt(0.0, color)
-        grad.setColorAt(0.5, darker)
-        grad.setColorAt(1.0, darker)
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(grad))
-        p.drawRoundedRect(QRect(int(x), int(y), int(w), int(h)), radius, radius)
-    def draw_panel_base(self, p, x, y, w, h, color: QColor, thickness: int =5):
-        radius = 10
-        pen = QPen(color)
-        pen.setWidth(thickness)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        p.drawRoundedRect(x, y, w, h, radius , radius)
-    def draw_ppanel_base(self, p, x, y, w, h, color: QColor, thickness: int =3):
-        radius = 10
-        pen = QPen(color)
-        pen.setWidth(thickness)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        p.drawRoundedRect(x, y, w, h, radius , radius)
-    def draw_fpanel_base(self, p, x, y, w, h, color: QColor, thickness: int =2):
-        radius = 10
-        pen = QPen(color)
-        pen.setWidth(thickness)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        p.drawRoundedRect(x, y, w, h, radius , radius)   
-    def draw_away_notch(self, p: QPainter, x, y, w, h, color: QColor):
-        offset = h * 0.25
-        p.setPen(Qt.NoPen)
-        p.setBrush(color)
-        path = QPainterPath()
-        path.moveTo(x, y)
-        path.lineTo(x + w, y + offset)
-        path.lineTo(x + w, y + h - offset )
-        path.lineTo(x, y + h)
-        path.closeSubpath
-        p.drawPath(path)
-    def draw_home_notch(self, p: QPainter, x, y, w, h, color: QColor):
-        offset = h * 0.25
-        p.save()
-        p.setPen(Qt.NoPen)
-        p.setBrush(color)
-        path = QPainterPath()
-        path.moveTo(x + w, y)                 # top-right
-        path.lineTo(x, y + offset)            # top-left inward
-        path.lineTo(x, y + h - offset)        # bottom-left inward
-        path.lineTo(x + w, y + h)             # bottom-right
-        path.closeSubpath()
-        p.drawPath(path)
-        p.restore()
-    def draw_bottom_event_text(self, p: QPainter, x: int, y: int, text: str):
-        if not text:
-            return
-        w = 640
-        h= 22
-        p.setFont(self.event_font)
-        p.setPen(Qt.white)
-        p.drawText(QRect(x, y, w, h), Qt.AlignCenter, text)
-    def draw_event_text(self, p: QPainter, x: int, y: int, text: str):
-        if not text:
-            return
-        w = 240
-        h= 22
-        p.setFont(self.record_font)
-        p.setPen(Qt.white)
-        p.drawText(QRect(x, y, w, h), Qt.AlignVCenter | Qt.AlignHCenter, text)
-    def draw_fully_gradient_rect(self, p: QPainter, x, y, w, h, color: QColor, radius: int = 12):
-        darker = color.darker(225)   # 175 = 75% darker; adjust if needed
-        sdarker = color.darker(125) 
-        grad = QLinearGradient(x, y, x + w, y)
-        grad.setColorAt(0.0, color)
-        grad.setColorAt(0.5, darker)
-        grad.setColorAt(1.0, darker)
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(grad))
-        p.drawRoundedRect(QRect(int(x), int(y), int(w), int(h)), radius, radius)
-    def draw_panel_base(self, p, x, y, w, h, color: QColor, thickness: int =5):
-        radius = 10
-        pen = QPen(color)
-        pen.setWidth(thickness)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        p.drawRoundedRect(x, y, w, h, radius , radius)
-    def draw_ppanel_base(self, p, x, y, w, h, color: QColor, thickness: int =3):
-        radius = 10
-        pen = QPen(color)
-        pen.setWidth(thickness)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        p.drawRoundedRect(x, y, w, h, radius , radius)
-    def draw_fpanel_base(self, p, x, y, w, h, color: QColor, thickness: int =2):
-        radius = 10
-        pen = QPen(color)
-        pen.setWidth(thickness)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        p.drawRoundedRect(x, y, w, h, radius , radius)   
-    def draw_away_notch(self, p: QPainter, x, y, w, h, color: QColor):
-        offset = h * 0.25
-        p.setPen(Qt.NoPen)
-        p.setBrush(color)
-        path = QPainterPath()
-        path.moveTo(x, y)
-        path.lineTo(x + w, y + offset)
-        path.lineTo(x + w, y + h - offset )
-        path.lineTo(x, y + h)
-        path.closeSubpath
-        p.drawPath(path)
-    def draw_home_notch(self, p: QPainter, x, y, w, h, color: QColor):
-        offset = h * 0.25
-        p.save()
-        p.setPen(Qt.NoPen)
-        p.setBrush(color)
-        path = QPainterPath()
-        path.moveTo(x + w, y)                 # top-right
-        path.lineTo(x, y + offset)            # top-left inward
-        path.lineTo(x, y + h - offset)        # bottom-left inward
-        path.lineTo(x + w, y + h)             # bottom-right
-        path.closeSubpath()
-        p.drawPath(path)
-        p.restore()
-    def draw_bottom_event_text(self, p: QPainter, x: int, y: int, text: str):
-        if not text:
-            return
-        w = 640
-        h= 22
-        p.setFont(self.event_font)
-        p.setPen(Qt.white)
-        p.drawText(QRect(x, y, w, h), Qt.AlignCenter, text)
-    def draw_event_text(self, p: QPainter, x: int, y: int, text: str):
-        if not text:
-            return
-        w = 240
-        h= 22
-        p.setFont(self.record_font)
-        p.setPen(Qt.white)
-        p.drawText(QRect(x, y, w, h), Qt.AlignVCenter | Qt.AlignHCenter, text)
-    def period_text(self):
-        p = self.state.period
-        if 1 <= p <= 4:
-            suffix = ["1st", "2nd", "3rd", "4th"][p-1]
-            return f"{suffix}"
-        ot_mapping = {
-        5: "1 OT",
-        6: "2 OT",
-        7: "3 OT",
-        8: "4 OT",
-        9: "5 OT",
-        11: "FINAL"
-    }
-        return ot_mapping.get(p, "")  # returns "" if period is 10+
-    def ordinal(self, n):
-        if n == 1: return "1st"
-        if n == 2: return "2nd"
-        if n == 3: return "3rd"
-        return f"{n}th"
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self._drag_pos = event.globalPosition().toPoint()
+
     def mouseMoveEvent(self, event):
-        if event.buttons() & Qt.LeftButton:
-            global_pos = event.globalPosition().toPoint()
-            delta = global_pos - self._drag_pos
+        if event.buttons() & Qt.MouseButton.LeftButton:
+            delta = event.globalPosition().toPoint() - self._drag_pos
             self.window().move(self.window().pos() + delta)
-            self._drag_pos = global_pos
+            self._drag_pos = event.globalPosition().toPoint()
+
     def mouseReleaseEvent(self, event):
         self._drag_pos = None
-    def draw_logo_in_top_rounded_window(self, p, x, y, w, h, logo, radius=12):
-        if logo is None or logo.isNull():
-            return
-        p.save()
-        p.setRenderHint(QPainter.SmoothPixmapTransform, True)
-        path = QPainterPath()
-        path.moveTo(x + radius, y)
-        path.lineTo(x + w - radius, y)
-        path.quadTo(x + w, y, x + w, y + radius)
-        path.lineTo(x + w, y + h)      # flat bottom
-        path.lineTo(x, y + h)
-        path.lineTo(x, y + radius)
-        path.quadTo(x, y, x + radius, y)
-        p.setClipPath(path, Qt.IntersectClip)
-        logo_scaled = logo.scaled(w, 9999,Qt.KeepAspectRatio,Qt.SmoothTransformation)
-        lx = x + (w - logo_scaled.width()) // 2
-        ly = y + (h - logo_scaled.height()) // 2
-        p.drawPixmap(lx, ly, logo_scaled)
-        p.restore()
-    def clip_to_rounded_rect(self, p, x, y, w, h, radius=12):
-        path = QPainterPath()
-        rect = QRectF(x, y, w, h)
-        path.addRoundedRect(rect, radius, radius)
-        p.setClipPath(path, Qt.IntersectClip)
-    def pct(self, made, missed):
-        total = made + missed
-        if total == 0:
-            return "0%"
-        return f"{round((made / total) * 100):d}%"
-class VolleyballScoreboard(QWidget):
+class VolleyballScoreboard(QWidget, ScoreboardToolkit):
     def __init__(self, state: ScoreState, mode="transparent", parent=None):
         super().__init__(parent)
         self.state = state
@@ -4703,17 +3684,27 @@ class VolleyballScoreboard(QWidget):
         self.flash_on = False
         self.show_volleyball_intro = False
         self.show_volleyball_breakboard = False
-        self.show_volleyball_scorebug = True 
+        self.show_volleyball_scorebug = True
+
         screen = QApplication.primaryScreen()
         dpi_scale = screen.devicePixelRatio()
-        self.setFixedSize(int(1920*dpi_scale), int(1080*dpi_scale))
+
+        self.setFixedSize(
+            int(1920 * dpi_scale),
+            int(1080 * dpi_scale)
+        )
+
         if self.mode == "transparent":
             self.setAttribute(Qt.WA_TranslucentBackground)
+            self.setAttribute(Qt.WA_NoSystemBackground, True)
+            self.setAttribute(Qt.WA_OpaquePaintEvent, False)
         else:
-            self.bg_color = QColor(255, 0, 255)  # green chroma key for vMix
+            self.bg_color = QColor(255, 0, 255)
+
         self.setAutoFillBackground(False)
 
-        # fonts
+        ui_updater.refresh.connect(self.force_repaint)
+
         self.sets_font = QFont("College", 22, QFont.Bold)
         self.title_font = QFont("BigNoodleTitling", 20, QFont.Bold)
         self.timer_font = QFont("College", 30, QFont.Bold)
@@ -4723,8 +3714,8 @@ class VolleyballScoreboard(QWidget):
         self.record_font = QFont("College", 12, QFont.Bold)
         self.introupper_font = QFont("BigNoodleTitling", 25, QFont.Bold)
         self.introtitle_font = QFont("College", 30, QFont.Bold)
-        self.introupper1_font = QFont("BigNoodleTitling", 25) 
-        self.introlower_font = QFont("BigNoodleTitling", 20)   
+        self.introupper1_font = QFont("BigNoodleTitling", 25)
+        self.introlower_font = QFont("BigNoodleTitling", 20)
         self.introrank_font = QFont("BigNoodleTitling", 30)
         self.introschool_font = QFont("BigNoodleTitling", 30, QFont.Bold)
         self.introcity_font = QFont("BigNoodleTitling", 25)
@@ -4734,21 +3725,48 @@ class VolleyballScoreboard(QWidget):
         self.bbscore_font = QFont("Octin Sports", 55, QFont.Bold)
         self.event_font = QFont("Legacy", 12, QFont.Bold)
         self.introrecord_font = QFont("College", 24, QFont.Bold)
+
+    def force_repaint(self):
+        self.repaint()
+
     def paintEvent(self, event):
+        DESIGN_W = 1920
+        DESIGN_H = 1080
+
         p = QPainter(self)
-        p.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
-        w = self.width()
-        h = self.height()
+
+        if self.mode == "transparent":
+            p.setCompositionMode(QPainter.CompositionMode_Source)
+            p.fillRect(self.rect(), Qt.transparent)
+            p.setCompositionMode(QPainter.CompositionMode_SourceOver)
+
+        p.setRenderHints(
+            QPainter.Antialiasing |
+            QPainter.TextAntialiasing
+        )
+
+        scale = min(
+            self.width() / DESIGN_W,
+            self.height() / DESIGN_H
+        )
+
+        offset_x = (self.width() - DESIGN_W * scale) / 2
+        offset_y = (self.height() - DESIGN_H * scale) / 2
+
+        p.translate(offset_x, offset_y)
+        p.scale(scale, scale)
+
         if self.mode == "keyable":
-            p.fillRect(self.rect(), self.bg_color)
+            p.fillRect(0, 0, DESIGN_W, DESIGN_H, self.bg_color)
+
         if self.show_volleyball_intro:
             self.draw_volleyball_intro(p)
+
         if self.show_volleyball_scorebug:
             self.draw_volleyball_scorebug(p)
+
         if self.show_volleyball_breakboard:
             self.draw_volleyball_breakboard(p)
-
-            return
     def draw_volleyball_intro(self, p):
         left_x = 550
         left_w = 400
@@ -4998,12 +4016,11 @@ class VolleyballScoreboard(QWidget):
         p.drawText(left_x+192, 2, 120, 70, Qt.AlignCenter, str(self.state.away_pts))
 
         ## -- HOME SECTION --
-        logo_x, logo_y, logo_w, logo_h = right_x + 7, 75, 40, 4
+        self.draw_rect(p, right_x, 60, right_w, 50, self.state.home_color)
+        logo_x, logo_y, logo_w, logo_h = right_x + 7, 75, 40, 45
         p.save()
         self.draw_logo_in_top_rounded_window(p,logo_x,logo_y,logo_w,logo_h,self.state.home_logo)
         p.restore()
-        self.draw_rect(p, right_x, 60, right_w, 50, self.state.home_color)
-
         self.draw_timeout_rects(p, right_x+55, 102, self.state.home_timeouts_volleyball, align="right")
         p.setFont(self.title_font)
         p.setPen(Qt.white)
@@ -5224,161 +4241,52 @@ class VolleyballScoreboard(QWidget):
                 self.draw_upper_event_text(p, left_x+45, 745, self.state.upperbb_event_text_basketball) 
             p.setOpacity(1.0)
         p.end()
-    def draw_normal_rect(self, p: QPainter, x, y, w, h, color: QColor):
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(color))
-        p.drawRect(QRect(int(x), int(y), int(w), int(h)))
-    def draw_bottom_event_text(self, p: QPainter, x: int, y: int, text: str):
-        if not text:
-            return
-        w = 640
-        h= 22
-        p.setFont(self.event_font)
-        p.setPen(Qt.white)
-        p.drawText(QRect(x, y, w, h), Qt.AlignCenter, text)
-    def draw_upper_event_text(self, p: QPainter, x: int, y: int, text: str):
-        if not text:
-            return
-        w = 640
-        h= 42
-        p.setFont(self.introupper_font)
-        p.setPen(Qt.white)
-        p.drawText(QRect(x, y, w, h), Qt.AlignCenter, text)
-    def draw_bbevent_text(self, p: QPainter, x: int, y: int, text: str):
-        if not text:
-            return
-        w = 240
-        h= 40
-        p.setFont(self.upperevent_font)
-        p.setPen(Qt.white)
-        p.drawText(QRect(x, y, w, h), Qt.AlignVCenter | Qt.AlignHCenter, text)
-    def draw_bevent_text(self, p: QPainter, x: int, y: int, text: str):
-        if not text:
-            return
-        w = 240
-        h= 40
-        p.setFont(self.scoreevent_font)
-        p.setPen(Qt.white)
-        p.drawText(QRect(x, y, w, h), Qt.AlignVCenter | Qt.AlignHCenter, text)
-    def clip_to_rounded_rect(self, p, x, y, w, h, radius=12):
-        path = QPainterPath()
-        rect = QRectF(x, y, w, h)
-        path.addRoundedRect(rect, radius, radius)
-        p.setClipPath(path, Qt.IntersectClip)
-    def draw_center_line(self, p, x, y, w, h, color=QColor(0, 0, 0), thickness=2):
-        mid_y = y + h // 2
-        pen = QPen(color, thickness)
-        pen.setCosmetic(True)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        p.drawLine(x, mid_y, x + w, mid_y)
-    def draw_center_vertical_line(self, p, x, y, w, h, color=QColor(0, 0, 0), thickness=2):
-        mid_x = x + w // 2
-        pen = QPen(color, thickness)
-        pen.setCosmetic(True)
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
-        p.drawLine(mid_x, y, mid_x, y + h)
-    def draw_timeout_rects(self, p: QPainter, x, y, remaining, max_count=2, align="left"):
-        w = 43
-        h = 4
-        spacing = 7
-        radius = 1
-
-        remaining = max(0, min(max_count, int(remaining)))
-        p.setPen(Qt.NoPen)
-
-        if align == "left":
-            for i in range(max_count):
-                rect_x = x + i * (w + spacing)
-                idx_from_left = max_count - 1 - i
-                filled = (idx_from_left < remaining)
-                p.setBrush(QColor("white") if filled else QColor(255,255,255,60))
-                p.drawRoundedRect(QRect(int(rect_x), int(y), int(w), int(h)), radius, radius)
-
-        if  align == "right":
-            total_w = max_count * w + (max_count - 1) * spacing
-            for i in range(max_count):
-            # i==0 is leftmost visual cell; determine whether it's filled by comparing index from right
-                rect_x = x + i * (w + spacing)
-            # The index from the right side:
-                idx_from_right = max_count - 1 - i
-                filled = (idx_from_right < remaining)
-                p.setBrush(QColor("white") if filled else QColor(255,255,255,60))
-                p.drawRoundedRect(QRect(int(rect_x), int(y), int(w), int(h)), radius, radius)
-    def draw_rect_transparent(self, p, x, y, w, h, color):
-        fill = QColor(color)
-        fill.setAlpha(120)  # adjust transparency (0-255)
-
-        p.setPen(Qt.NoPen)       # no outline
-        p.setBrush(fill)         # transparent fill
-        p.drawRect(int(x), int(y), int(w), int(h))
-    def period_text(self):
-        p = self.state.period
-        if p == 1: return "1"
-        if p == 2: return "2"
-        if p == 3: return "3"
-        if p == 4: return "4"
-        if p == 5: return "5"
-        if p == 6: return "Final"
-        return ""
-    def draw_rect(self, p, x, y, w, h, color):
-        p.setPen(Qt.NoPen)
-        p.setBrush(color)
-        p.drawRect(int(x), int(y), int(w), int(h))
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self._drag_pos = event.globalPosition().toPoint()
-    def mouseMoveEvent(self, event):
-        if event.buttons() & Qt.LeftButton:
-            global_pos = event.globalPosition().toPoint()
-            delta = global_pos - self._drag_pos
-            self.window().move(self.window().pos() + delta)
-            self._drag_pos = global_pos
-    def mouseReleaseEvent(self, event):
-        self._drag_pos = None
-    def draw_logo_in_top_rounded_window(self, p, x, y, w, h, logo, radius=12):
-        if not logo:
-            return
 
-        p.setRenderHint(QPainter.SmoothPixmapTransform, True)
-        img = logo.toImage()
-        img = img.scaled(w,9999,Qt.KeepAspectRatio,Qt.SmoothTransformation)
-        logo_scaled = QPixmap.fromImage(img)
-        lx = x
-        ly = y + (h - logo_scaled.height()) // 2
-        path = QPainterPath()
-        path.moveTo(x + radius, y)
-        path.lineTo(x + w - radius, y)
-        path.quadTo(x + w, y, x + w, y + radius)
-        path.lineTo(x + w, y + h)
-        path.lineTo(x, y + h)
-        path.lineTo(x, y + radius)
-        path.quadTo(x, y, x + radius, y)
-        p.save()
-        p.setClipPath(path, Qt.IntersectClip)
-        p.drawPixmap(lx, ly, logo_scaled)
-        p.restore()   
-class SoccerScoreboard(QWidget):
+    def mouseMoveEvent(self, event):
+        if event.buttons() & Qt.MouseButton.LeftButton:
+            delta = event.globalPosition().toPoint() - self._drag_pos
+            self.window().move(self.window().pos() + delta)
+            self._drag_pos = event.globalPosition().toPoint()
+
+    def mouseReleaseEvent(self, event):
+        self._drag_pos = None  
+class SoccerScoreboard(QWidget, ScoreboardToolkit):
     def __init__(self, state: ScoreState, mode="transparent", parent=None):
         super().__init__(parent)
+
         self.state = state
         self.mode = mode
         self.flash_on = False
+
         self.show_soccer_intro = False
         self.show_soccer_breakboard = False
         self.show_soccer_scorebug = True
         self.show_soccer_final = False
         self.show_home_goal = False
         self.show_away_goal = False
+
         screen = QApplication.primaryScreen()
         dpi_scale = screen.devicePixelRatio()
-        self.setFixedSize(int(1920*dpi_scale), int(1080*dpi_scale))
+
+        self.setFixedSize(
+            int(1920 * dpi_scale),
+            int(1080 * dpi_scale)
+        )
+
         if self.mode == "transparent":
             self.setAttribute(Qt.WA_TranslucentBackground)
+            self.setAttribute(Qt.WA_NoSystemBackground, True)
+            self.setAttribute(Qt.WA_OpaquePaintEvent, False)
         else:
-            self.bg_color = QColor(255, 0, 255) # green chroma key for vMix
+            self.bg_color = QColor(255, 0, 255)
+
         self.setAutoFillBackground(False)
+
+        ui_updater.refresh.connect(self.force_repaint)
+
         self.big_font = QFont("College", 40, QFont.Bold)
         self.timeout_font = QFont("BigNoodleTitling", 35, QFont.Bold)
         self.introupper_font = QFont("BigNoodleTitling", 25, QFont.Bold)
@@ -5394,7 +4302,7 @@ class SoccerScoreboard(QWidget):
         self.timer_font = QFont("College", 21, QFont.Bold)
         self.period_font = QFont("College", 18, QFont.Bold)
         self.score_font = QFont("College", 25, QFont.Bold)
-        self.event_font = QFont("BigNoodleTitling", 15, QFont.Bold)
+        self.event_font = QFont("Legacy", 12, QFont.Bold)
         self.record_font = QFont("College", 12, QFont.Bold)
         self.ftitle_font = QFont("BigNoodleTitling", 30)
         self.frank_font = QFont("BigNoodleTitling", 23)
@@ -5410,53 +4318,90 @@ class SoccerScoreboard(QWidget):
         self.bbperiod_font = QFont("Legacy", 15)
         self.final_font = QFont("BigNoodleTitling", 30, QFont.Bold)
         self.bbscore_font = QFont("Octin Sports", 55, QFont.Bold)
-        self.event_font = QFont("Legacy", 12, QFont.Bold)
         self.introrecord_font = QFont("College", 24, QFont.Bold)
+
         self.center_logo_label = QLabel(self)
         self.center_logo_label.setAlignment(Qt.AlignCenter)
+
         self.request_logo_file()
-        ui_updater.refresh.connect(self.update)
-        if self.mode == "transparent":
-            self.setAttribute(Qt.WA_TranslucentBackground)
-        else:
-            self.bg_color = QColor(255, 0, 255)  # green chroma key for vMix
-        self.setAutoFillBackground(False)
+
+    def force_repaint(self):
+        self.repaint()
 
     def request_logo_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select Center Logo", "", "Image Files (*.png *.jpg *.jpeg *.bmp *.gif)")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Center Logo",
+            "",
+            "Image Files (*.png *.jpg *.jpeg *.bmp *.gif)"
+        )
+
         if file_path:
             self._load_center_logo(file_path)
 
     def _load_center_logo(self, file_path: str = ""):
         if not file_path:
             return
+
         pixmap = QPixmap(file_path)
+
         if pixmap.isNull():
-            QMessageBox.warning(self, "Error", "Failed to load image from the selected file.")
+            QMessageBox.warning(
+                self,
+                "Error",
+                "Failed to load image from the selected file."
+            )
         else:
             self.state.center_logo = pixmap
-            self.update()
+            self.repaint()
 
     def paintEvent(self, event):
+        DESIGN_W = 1920
+        DESIGN_H = 1080
+
         p = QPainter(self)
-        p.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
-        w = self.width()
-        h = self.height()
+
+        if self.mode == "transparent":
+            p.setCompositionMode(QPainter.CompositionMode_Source)
+            p.fillRect(self.rect(), Qt.transparent)
+            p.setCompositionMode(QPainter.CompositionMode_SourceOver)
+
+        p.setRenderHints(
+            QPainter.Antialiasing |
+            QPainter.TextAntialiasing
+        )
+
+        scale = min(
+            self.width() / DESIGN_W,
+            self.height() / DESIGN_H
+        )
+
+        offset_x = (self.width() - DESIGN_W * scale) / 2
+        offset_y = (self.height() - DESIGN_H * scale) / 2
+
+        p.translate(offset_x, offset_y)
+        p.scale(scale, scale)
+
         if self.mode == "keyable":
-            p.fillRect(self.rect(), self.bg_color)
+            p.fillRect(0, 0, DESIGN_W, DESIGN_H, self.bg_color)
+
         if self.show_soccer_intro:
             self.draw_soccer_intro(p)
+
         if self.show_soccer_scorebug:
             self.draw_soccer_scorebug(p)
+
         if self.show_home_goal:
             self.draw_home_goal(p)
+
         if self.show_away_goal:
             self.draw_away_goal(p)
+
         if self.show_soccer_breakboard:
             self.draw_soccer_breakboard(p)
+
         if self.show_soccer_final:
             self.draw_soccer_final(p)
-        return
     def draw_soccer_intro(self, p):
         left_x = 550
         left_w = 400
@@ -6090,108 +5035,29 @@ class SoccerScoreboard(QWidget):
                 self.draw_upper_event_text(p, left_x+45, 745, self.state.upperbb_event_text_basketball) 
             p.setOpacity(1.0)
         p.end()
-    def load_center_logo_from_setup(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Open away logo", "", "Images (*.png *.jpg *.bmp)")
-        if path:
-            pm = QPixmap(path)
-            pm = pm.scaled(300, 300, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            self.state.center_logo = pm
-            self.repaint_scoreboard()
-    def load_center_logo(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Open away logo", "", "Images (*.png *.jpg *.bmp)")
-        if path:
-            pm = QPixmap(path)
-            pm = pm.scaled(60, 60, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            self.state.center_logo = pm
-            self.repaint_scoreboard()
-    def format_rank_name(self, rank, name):
-        try:
-            r = int(rank)
-        except:
-            r = 0
-        name = name.upper()
-        if r <= 0:
-            return "", name
-        return str(r), name
-    def draw_normal_rect(self, p: QPainter, x, y, w, h, color: QColor):
-        p.setPen(Qt.NoPen)
-        p.setBrush(QBrush(color))
-        p.drawRect(QRect(int(x), int(y), int(w), int(h)))
-    def draw_logo_in_top_rounded_window(self, p, x, y, w, h, logo, radius=12):
-        if logo is None or not isinstance(logo, QPixmap) or logo.isNull():
-            return 
-        p.save()
-        p.setRenderHint(QPainter.SmoothPixmapTransform, True)
-        path = QPainterPath()
-        path.moveTo(x + radius, y)
-        path.lineTo(x + w - radius, y)
-        path.quadTo(x + w, y, x + w, y + radius)
-        path.lineTo(x + w, y + h)      # flat bottom
-        path.lineTo(x, y + h)
-        path.lineTo(x, y + radius)
-        path.quadTo(x, y, x + radius, y)
-        p.setClipPath(path, Qt.IntersectClip)
-        logo_scaled = logo.scaled(
-            w, 9999,
-        Qt.KeepAspectRatio,
-        Qt.SmoothTransformation
-    )
-        lx = x + (w - logo_scaled.width()) // 2
-        ly = y + (h - logo_scaled.height()) // 2
-        p.drawPixmap(lx, ly, logo_scaled)
-        p.restore()
-    def clip_to_rounded_rect(self, p, x, y, w, h, radius=12):
-        path = QPainterPath()
-        rect = QRectF(x, y, w, h)
-        path.addRoundedRect(rect, radius, radius)
-        p.setClipPath(path, Qt.IntersectClip)
-    def draw_bottom_event_text(self, p: QPainter, x: int, y: int, text: str):
-        if not text:
-            return
-        w = 515
-        h= 22
-        p.setFont(self.event_font)
-        p.setPen(Qt.white)
-        p.drawText(QRect(x, y, w, h), Qt.AlignCenter, text)
-    def draw_transparentnormal_rect(self, p: QPainter, x, y, w, h, color: QColor):
-        p.setPen(Qt.NoPen)
-        color.setAlpha(240)
-        p.setBrush(QBrush(color))
-        p.drawRect(QRect(int(x), int(y), int(w), int(h)))
-    def draw_rect(self, p, x, y, w, h, color):
-        p.setPen(Qt.NoPen)
-        p.setBrush(color)
-        p.drawRect(int(x), int(y), int(w), int(h))
-    def period_text(self):
-        p = self.state.period
-    # --- regular periods ---
-        if 1 <= p <= 2:
-            suffix = ["1st", "2nd"][p-1]
-            return f"{suffix}"
-    # --- overtime periods ---
-        ot_mapping = {3: "OT", 4: "2OT", 5: "PKS",}
-        return ot_mapping.get(p, "")  # returns "" if period is 10+
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self._drag_pos = event.globalPosition().toPoint()
+
     def mouseMoveEvent(self, event):
-        if event.buttons() & Qt.LeftButton:
-            global_pos = event.globalPosition().toPoint()
-            delta = global_pos - self._drag_pos
+        if event.buttons() & Qt.MouseButton.LeftButton:
+            delta = event.globalPosition().toPoint() - self._drag_pos
             self.window().move(self.window().pos() + delta)
-            self._drag_pos = global_pos
+            self._drag_pos = event.globalPosition().toPoint()
+
     def mouseReleaseEvent(self, event):
         self._drag_pos = None
-
-class BaseballSoftballScoreboard(QWidget):
+class BaseballSoftballScoreboard(QWidget, ScoreboardToolkit):
     def __init__(self, state: ScoreState, mode="transparent", parent=None):
         super().__init__(parent)
         self.state = state
         self.mode = mode
         self.flash_on = False
+        self.state.bspossession = "top"
         self.show_baseballsoftball_intro = False
         self.show_baseballsoftball_breakboard = False
         self.show_baseballsoftball_scorebug = True 
+        self.show_baseballsoftball_final = False
         screen = QApplication.primaryScreen()
         dpi_scale = screen.devicePixelRatio()
         self.setFixedSize(int(1920*dpi_scale), int(1080*dpi_scale))
@@ -6207,8 +5073,8 @@ class BaseballSoftballScoreboard(QWidget):
         self.timer_font = QFont("College", 30, QFont.Bold)
         self.setNumber_font = QFont("College", 18, QFont.Bold)
         self.set_font = QFont("College", 18, QFont.Bold)
-        self.score_font = QFont("College", 25, QFont.Bold)
-        self.record_font = QFont("College", 12, QFont.Bold)
+        self.score_font = QFont("BigNoodleTitling", 30, QFont.Bold)
+        self.record_font = QFont("College", 25, QFont.Bold)
         self.introupper_font = QFont("BigNoodleTitling", 25, QFont.Bold)
         self.introtitle_font = QFont("College", 30, QFont.Bold)
         self.introupper1_font = QFont("BigNoodleTitling", 25) 
@@ -6222,6 +5088,7 @@ class BaseballSoftballScoreboard(QWidget):
         self.bbscore_font = QFont("Octin Sports", 55, QFont.Bold)
         self.event_font = QFont("Legacy", 12, QFont.Bold)
         self.introrecord_font = QFont("College", 24, QFont.Bold)
+        self.inning_font = QFont("BigNoodleTitling", 30, QFont.Bold)
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
@@ -6243,9 +5110,63 @@ class BaseballSoftballScoreboard(QWidget):
     def draw_baseballsoftball_breakboard(self, p):
         pass
     def draw_baseballsoftball_scorebug(self, p):
-        pass
+        left_x = 1415
+        left_w = 400
+        y_base = 890
+        h_main = 120
+        x = left_x + 190 - 15  # half of text box width
+        y = y_base + 60
+        top_color = QColor("#ff0000") if getattr(self.state, "bspossession", "top") == "top" else QColor("#1c1c1c")
+        bottom_color = QColor("#ff0000") if getattr(self.state, "bspossession", "bottom") == "bottom" else QColor("#1c1c1c")       
+        self.draw_fully_rounded_rect(p, left_x, y_base, left_w, h_main, QColor("#1c1c1c"), radius=10)
+        self.draw_tlteam_gradient_rect(p, left_x + 8, y_base + 8, left_w - 301, 52, self.state.away_color)
+        self.draw_blteam_gradient_rect(p, left_x + 8, y_base + 60, left_w - 301, 52, self.state.home_color)
+        self.draw_line(p, left_x + 8, y_base + 60, left_x + 8 + (left_w - 301), y_base + 60, QColor("#ffffff"), 3)        
+        self.draw_normal_rect(p, left_x + 105, y_base + 8, 60, 52, QColor("#ffffff"))
+        self.draw_normal_rect(p, left_x + 105, y_base + 60, 60, 52, QColor("#ffffff"))  
+        self.draw_line(p, left_x + 105, y_base + 60, left_x + 165, y_base + 60, QColor("#000000"), 3)
+        self.draw_up_triangle(p, left_x + 190, y_base + 28, 18, 18, top_color)
+        p.setPen(QColor("#ffffff"))
+        p.setPen(QColor("#ffffff"))
+        p.setFont(self.inning_font)
+        p.drawText(x, y-20, 30, 45, Qt.AlignCenter, str(self.state.inning))
+        self.draw_down_triangle(p, left_x + 190, y_base + 95, 18, 18, bottom_color)
+        self.draw_line(p, left_x + 212, y_base + 8, left_x + 212, y_base + 112, QColor("#ffffff"), 3)
+        p.setPen(QColor("#000000"))
+        p.setFont(self.score_font)
+        p.drawText(QRect(left_x + 130, y_base + 14, 60, 52), str(self.state.bsaway_score))
+        p.drawText(QRect(left_x + 130, y_base + 66, 60, 52), str(self.state.bshome_score))
+        out1 = QColor("#ff0000") if self.state.outs >= 1 else QColor("#1c1c1c")
+        out2 = QColor("#ff0000") if self.state.outs >= 2 else QColor("#1c1c1c")
+        x2 = left_x + 225
+        p.setPen(QPen(QColor("#ffffff"), 2))
+        p.setBrush(out1)
+        p.drawEllipse(x2, y_base + 80, 16, 16)
+        p.setBrush(out2)
+        p.drawEllipse(x2 + 35, y_base + 80, 16, 16)
+        x = left_x + 225
+        p.setPen(QColor("#ffffff"))
+        p.setFont(self.record_font)
+        p.drawText(x, y_base + 25, 100, 55, Qt.AlignLeft, f"{self.state.balls}-{self.state.strikes}")
+        
+        logo_x, logo_y, logo_w, logo_h = left_x + 29, y_base + 3, 60, 65
+        p.save()
+        self.draw_logo_in_top_rounded_window(p, logo_x, logo_y, logo_w, logo_h, self.state.away_logo)
+        p.restore()
+
+        logo_x2, logo_y2, logo_w2, logo_h2 = left_x + 29, y_base + 55, 60, 65
+        p.save()
+        self.draw_logo_in_top_rounded_window(p, logo_x2, logo_y2, logo_w2, logo_h2, self.state.home_logo)
+        p.restore()
+        base_x = left_x + 345
+        base_y = y_base + 57
+        gap = 22
+        self.draw_diamond(p, base_x, base_y - gap, 14, QColor("#ff0000") if self.state.second_base else QColor("#1c1c1c"))
+        self.draw_diamond(p, base_x - gap, base_y, 14, QColor("#ff0000") if self.state.third_base else QColor("#1c1c1c"))
+        self.draw_diamond(p, base_x + gap, base_y, 14, QColor("#ff0000") if self.state.first_base else QColor("#1c1c1c"))
     def draw_baseballsoftball_final(self, p):
         pass
+        p.end()
 class HockeyScoreboard(QWidget):
     def __init__(self, state: ScoreState, mode="transparent", parent=None):
         super().__init__(parent)
@@ -6313,291 +5234,258 @@ class HockeyScoreboard(QWidget):
         pass
 # ---------- Control window ----------
 class FootballControl(QMainWindow):
+    BUTTON_STYLE = "background-color:white; color:black;"
+    DARK_LABEL_STYLE = "QPushButton { background-color: #121212; color: white; }"
+    def make_button(self, text, slot=None, style=None):
+        btn = QPushButton(text)
+        if style is None:
+            style = self.BUTTON_STYLE
+        btn.setStyleSheet(style)
+        if slot:
+            btn.clicked.connect(slot)
+        return btn
+    def make_label_button(self, text):
+        return self.make_button(text,lambda: None,self.DARK_LABEL_STYLE)
+    def make_lcd(self, digits, value=None):
+        lcd = QLCDNumber()
+        lcd.setDigitCount(digits)
+        lcd.setSegmentStyle(QLCDNumber.Flat)
+        lcd.setStyleSheet("""
+            QLCDNumber {
+                color: white;
+                background-color: black;
+                border: 2px solid #333;
+                padding: 2px;
+            }
+        """)
+        if value is not None:
+            lcd.display(value)
+        return lcd
+    def make_spinbox(self,minimum,maximum,value,width=None,hidden=False):
+        spin = QSpinBox()
+        spin.setRange(minimum, maximum)
+        spin.setValue(value)
+        spin.setStyleSheet(self.BUTTON_STYLE)
+        if width:
+            spin.setFixedWidth(width)
+        if hidden:
+            spin.hide()
+        return spin
+    def create_points_combo(self, text, values, team):
+        combo = QComboBox()
+        combo.setStyleSheet(self.BUTTON_STYLE)
+        combo.addItem(text)
+        for value in values:
+            combo.addItem(str(value))
+        def on_changed(index):
+            if index == 0:
+                return
+            points = int(combo.currentText())
+            self.add_points(points, team)
+            combo.setCurrentIndex(0)
+        combo.currentIndexChanged.connect(on_changed)
+        return combo
+    def create_action_combo(self, placeholder, items, callback):
+        combo = QComboBox()
+        combo.setStyleSheet(self.BUTTON_STYLE)
+        combo.addItem(placeholder)
+        for item in items:
+            combo.addItem(item)
+        def on_changed(index):
+            if index == 0:
+                return
+            callback(combo.currentText())
+            combo.setCurrentIndex(0)
+        combo.currentIndexChanged.connect(on_changed)
+        return combo
+    def make_team_score_display(self, value):
+        spin = self.make_spinbox(0,999,value,hidden=True)
+        lcd = self.make_lcd(3)
+        lcd.setFixedWidth(240)
+        lcd.setFixedHeight(60)
+        lcd.setSizePolicy(QSizePolicy.Fixed,QSizePolicy.Fixed)
+        spin.valueChanged.connect(lcd.display)
+        return spin, lcd
+    def make_timeout_display(self, value):
+        lcd = self.make_lcd(1, value)
+        return lcd
+
+
     def __init__(self, state: ScoreState, scoreboard: FootballScoreboard):
+
         super().__init__()
+
         self.state = state
+        self.scoreboard = scoreboard
+
         self.show_playclock = False
+
+        self.setWindowTitle(
+            f"Football Scoreboard Control (Version: {current_version})"
+        )
+
+        self.setMinimumSize(720, 520)
+
+        # ---------------- TIMERS ----------------
+
         self.td_timer = QTimer(self)
         self.td_timer.setSingleShot(True)
         self.td_timer.timeout.connect(self.end_touchdown)
+
         self.ui_timer = QTimer(self)
         self.ui_timer.timeout.connect(self.ui_tick)
         self.ui_timer.start(100)
-        self.scoreboard = scoreboard
-        self.setWindowTitle("Football Scoreboard Control "   "(Version: "f"{current_version})")
-        self.setMinimumSize(720, 520)
 
-        # Tab widget as central
+        self.timer = QTimer()
+        self.timer.setInterval(1000)
+        self.timer.timeout.connect(self.game_tick)
+
+        self.play_timer = QTimer()
+        self.play_timer.setInterval(1000)
+        self.play_timer.timeout.connect(self.play_tick)
+
+        # ---------------- TABS ----------------
+
         tabs = QTabWidget()
         self.setCentralWidget(tabs)
 
-        # Page 1 — your original controls (kept structure identical)
-
+        # PAGE 1
         page1 = QWidget()
-        tabs.addTab(page1, "Game Info Setup")
-        grid_info = QGridLayout()
         page1.setStyleSheet("background-color: #121212;")
+        grid_info = QGridLayout()
         page1.setLayout(grid_info)
+        tabs.addTab(page1, "Game Info Setup")
 
+        # PAGE 2
         page2 = QWidget()
-        tabs.addTab(page2, "Main Controls")
-        grid = QGridLayout()
         page2.setStyleSheet("background-color: #121212;")
+        grid = QGridLayout()
         page2.setLayout(grid)
+        tabs.addTab(page2, "Main Controls")
+
+        # PAGE 3
+        page3 = QWidget()
+        page3.setStyleSheet("background-color: #121212;")
+        grid_away = QGridLayout()
+        page3.setLayout(grid_away)
+        tabs.addTab(page3, "Away Setup")
+
+        # PAGE 4
+        page4 = QWidget()
+        page4.setStyleSheet("background-color: #121212;")
+        grid_home = QGridLayout()
+        page4.setLayout(grid_home)
+        tabs.addTab(page4, "Home Setup")
+
+        # ---------------- GROUPS ----------------
+
         score_group = QGroupBox("Score Control")
         clock_group = QGroupBox("Clock Control")
         game_group = QGroupBox("Game Control")
+
         score_layout = QGridLayout()
         clock_layout = QGridLayout()
         game_layout = QGridLayout()
+
         score_group.setLayout(score_layout)
         clock_group.setLayout(clock_layout)
         game_group.setLayout(game_layout)
+
         grid.addWidget(score_group, 0, 0, 1, 2)
         grid.addWidget(clock_group, 1, 1)
         grid.addWidget(game_group, 1, 0)
-        # Page 2 — Away Setup
-        page3 = QWidget()
-        tabs.addTab(page3, "Away Setup")
-        grid_away = QGridLayout()
-        page3.setStyleSheet("background-color: #121212;")
-        page3.setLayout(grid_away)
 
-
-        # Page 3 — Home Setup
-        page4 = QWidget()
-        tabs.addTab(page4, "Home Setup")
-        grid_home = QGridLayout()
-        page4.setStyleSheet("background-color: #121212;")
-        page4.setLayout(grid_home)
-        
-        # ----------------- PAGE 1 CONTENT (kept same layout) -----------------
-        # --- FOULS (HOME) ---
-        btn_nothing = QPushButton("Home Team")
-        btn_nothing.clicked.connect(lambda: None)
-        btn_nothing.setStyleSheet("QPushButton { background-color: #121212; color: white; }")
-        score_layout.addWidget(btn_nothing, 0, 3, 1, 2)
-
-        btn_nothing = QPushButton("Away Team")
-        btn_nothing.clicked.connect(lambda: None)
-        btn_nothing.setStyleSheet("QPushButton { background-color: #121212; color: white; }")
-        score_layout.addWidget(btn_nothing, 0, 0, 1, 2)
-        combo_away_plus = QComboBox()
-        combo_away_plus.setStyleSheet("background-color:white; color:black;")
-        combo_away_plus.addItem("Add Points")  # placeholder
-        positive_points = [6, 3, 2, 1]
-        for points in positive_points:
-            combo_away_plus.addItem(str(points))
-        def on_add_points(index):
-            if index == 0:
-                return  # ignore placeholder
-            points = int(combo_away_plus.currentText())
-            self.add_points(points, "away")
-            combo_away_plus.setCurrentIndex(0)  # reset to placeholder
-        combo_away_plus.currentIndexChanged.connect(on_add_points)
-        score_layout.addWidget(combo_away_plus, 1, 0, 1, 2)  # place below remove dropdown
-        combo_home_plus = QComboBox()
-        combo_home_plus.setStyleSheet("background-color:white; color:black;")
-        combo_home_plus.addItem("Add Points")
-        for points in [6, 3, 2, 1]:
-            combo_home_plus.addItem(str(points))
-        def on_home_add_points(index):
-            if index == 0:
-                return
-            points = int(combo_home_plus.currentText())
-            self.add_points(points, "home")
-            combo_home_plus.setCurrentIndex(0)
-        combo_home_plus.currentIndexChanged.connect(on_home_add_points)
-        score_layout.addWidget(combo_home_plus, 1, 3, 1, 2)
-        self.aw_score_box = QSpinBox()
-        self.aw_score_box.setRange(0, 999)
-        self.aw_score_box.setValue(self.state.away_pts)
-        self.aw_score_box.hide()    # <--- hide it from UI
-        self.aw_lcd = QLCDNumber()
-        self.aw_lcd.setDigitCount(3)
-        self.aw_lcd.setSegmentStyle(QLCDNumber.Flat)
-        self.aw_lcd.setStyleSheet("""QLCDNumber { color: white;background-color: black;border: 2px solid #333;padding: 2px;}""")
-        self.aw_lcd.setFixedWidth(240)  # adjust width to visually cover 4 columns
-        self.aw_lcd.setFixedHeight(60)  # optional, keep it one row tall
-        self.aw_lcd.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed) 
-        score_layout.addWidget(self.aw_lcd, 2, 0, 1, 3)  # only one row, one column 
-        self.aw_score_box.valueChanged.connect(self.aw_lcd.display)
-        self.hm_score_box = QSpinBox()
-        self.hm_score_box.setRange(0, 999)
-        self.hm_score_box.setValue(self.state.home_pts)
-        self.hm_score_box.hide()
-        score_layout.addWidget(self.hm_score_box, 2, 5)
-        self.hm_lcd = QLCDNumber()
-        self.hm_lcd.setDigitCount(3)
-        self.hm_lcd.setSegmentStyle(QLCDNumber.Flat)
-        self.hm_lcd.setStyleSheet("""
-        QLCDNumber { color: white;background-color: black;border: 2px solid #333;padding: 2px;}""")
-        self.hm_lcd.setFixedWidth(240)
-        self.hm_lcd.setFixedHeight(60)
-        self.hm_lcd.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        score_layout.addWidget(self.hm_lcd, 2, 3, 1 ,3)
-        self.hm_score_box.valueChanged.connect(self.hm_lcd.display)
-        combo_away_minus = QComboBox()
-        combo_away_minus.setStyleSheet("background-color:white; color:black;")
-        combo_away_minus.addItem("Remove Points")
-        negative_points = [-6, -3, -2, -1]
-        for points in negative_points:
-            combo_away_minus.addItem(str(points))
-        def on_combo_changed(index):
-            if index == 0:
-                return 
-            points = int(combo_away_minus.currentText())
-            self.add_points(points, "away")
-            combo_away_minus.setCurrentIndex(0) 
-        combo_away_minus.currentIndexChanged.connect(on_combo_changed)
-        score_layout.addWidget(combo_away_minus, 3, 0, 1, 2)
-        combo_home_minus = QComboBox()
-        combo_home_minus.setStyleSheet("background-color:white; color:black;")
-        combo_home_minus.addItem("Remove Points")
-        for points in [-6, -3, -2, -1]:
-            combo_home_minus.addItem(str(points))
-        def on_home_remove_points(index):
-            if index == 0:
-                return
-            points = int(combo_home_minus.currentText())
-            self.add_points(points, "home")
-            combo_home_minus.setCurrentIndex(0)
-        combo_home_minus.currentIndexChanged.connect(on_home_remove_points)
-        score_layout.addWidget(combo_home_minus, 3, 3, 1, 2)
-        btn_poss_none = QPushButton("None")
-        btn_poss_none.setStyleSheet("background-color:white; color:black;")
-        btn_poss_none.clicked.connect(lambda: self.set_possession_direct(None))
-        game_layout.addWidget(btn_poss_none, 4, 3 ,1 ,2)
-        btn_poss_away = QPushButton("Away")
-        btn_poss_away.setStyleSheet("background-color:white; color:black;")
-        btn_poss_away.clicked.connect(lambda: self.set_possession_direct("away"))
-        game_layout.addWidget(btn_poss_away, 4, 0, 1, 3)
-        btn_poss_home = QPushButton("Home")
-        btn_poss_home.setStyleSheet("background-color:white; color:black;")
-        btn_poss_home.clicked.connect(lambda: self.set_possession_direct("home"))
-        game_layout.addWidget(btn_poss_home, 4, 5, 1, 3)
-        btn_nothing = QPushButton("Timeouts Left")
-        btn_nothing.clicked.connect(lambda: None)
-        btn_nothing.setStyleSheet("QPushButton { background-color: #121212; color: white; }")
-        game_layout.addWidget(btn_nothing, 5, 3, 1, 2)
-        self.away_to_lcd = QLCDNumber()
-        self.away_to_lcd.setDigitCount(1)
-        self.away_to_lcd.setSegmentStyle(QLCDNumber.Flat)
-        self.away_to_lcd.display(self.state.away_timeouts)
-        self.away_to_lcd.setStyleSheet("""QLCDNumber { color: white;background-color: black;border: 2px solid #333;padding: 2px;}""")
-        game_layout.addWidget(self.away_to_lcd, 5, 1, 1, 1)
-        btn_away_use = QPushButton("-")
-        btn_away_use.clicked.connect(lambda: self.change_timeout("away", -1))
-        btn_away_use.setStyleSheet("background-color:white; color:black;")
-        game_layout.addWidget(btn_away_use, 5,0)
-        btn_away_restore = QPushButton("+")
-        btn_away_restore.clicked.connect(lambda: self.change_timeout("away", +1))
-        btn_away_restore.setStyleSheet("background-color:white; color:black;")
-        game_layout.addWidget(btn_away_restore, 5, 2)
-        self.home_to_lcd = QLCDNumber()
-        self.home_to_lcd.setDigitCount(1)
-        self.home_to_lcd.setSegmentStyle(QLCDNumber.Flat)
-        self.home_to_lcd.display(self.state.home_timeouts)
-        self.home_to_lcd.setStyleSheet("""QLCDNumber { color: white;background-color: black;border: 2px solid #333;padding: 2px;}""")
-        game_layout.addWidget(self.home_to_lcd, 5, 6, 1, 1)
-        btn_home_use = QPushButton("-")
-        btn_home_use.setStyleSheet("background-color:white; color:black;")
-        btn_home_use.clicked.connect(lambda: self.change_timeout("home", -1))
-        game_layout.addWidget(btn_home_use, 5, 5)
-        btn_home_restore = QPushButton("+")
-        btn_home_restore.setStyleSheet("background-color:white; color:black;")
-        btn_home_restore.clicked.connect(lambda: self.change_timeout("home", +1))
-        game_layout.addWidget(btn_home_restore, 5, 7)
-        self.time_lcd = QLCDNumber()
-        self.time_lcd.setDigitCount(5)  # MM:SS
-        self.time_lcd.setSegmentStyle(QLCDNumber.Flat)
+        score_layout.addWidget(self.make_label_button("Away Team"),0, 0, 1, 2)
+        score_layout.addWidget(self.make_label_button("Home Team"),0, 3, 1, 2)
+        combo_away_plus = self.create_points_combo("Add Points",[6, 3, 2, 1],"away")
+        score_layout.addWidget(combo_away_plus,1, 0, 1, 2)
+        combo_home_plus = self.create_points_combo("Add Points",[6, 3, 2, 1],"home")
+        score_layout.addWidget(combo_home_plus,1, 3, 1, 2)
+        self.aw_score_box, self.aw_lcd = self.make_team_score_display(self.state.away_pts)
+        score_layout.addWidget(self.aw_lcd,2, 0, 1, 3)
+        self.hm_score_box, self.hm_lcd = self.make_team_score_display(self.state.home_pts)
+        score_layout.addWidget(self.hm_lcd,2, 3, 1, 3)
+        combo_away_minus = self.create_points_combo("Remove Points",[-6, -3, -2, -1],"away")
+        score_layout.addWidget(combo_away_minus,3, 0, 1, 2)
+        combo_home_minus = self.create_points_combo("Remove Points",[-6, -3, -2, -1],"home")
+        score_layout.addWidget(combo_home_minus,3, 3, 1, 2)
+        btn_poss_away = self.make_button("Away",lambda: self.set_possession_direct("away"))
+        game_layout.addWidget(btn_poss_away,4, 0, 1, 3)
+        btn_poss_none = self.make_button("None",lambda: self.set_possession_direct(None))
+        game_layout.addWidget(btn_poss_none,4, 3, 1, 2)
+        btn_poss_home = self.make_button("Home",lambda: self.set_possession_direct("home"))
+        game_layout.addWidget(btn_poss_home,4, 5, 1, 3)
+        game_layout.addWidget(self.make_label_button("Timeouts Left"),5, 3, 1, 2)
+        self.away_to_lcd = self.make_timeout_display(self.state.away_timeouts)
+        game_layout.addWidget(self.away_to_lcd,5, 1)
+        btn_away_use = self.make_button("-",lambda: self.change_timeout("away", -1))
+        game_layout.addWidget(btn_away_use,5, 0)
+        btn_away_restore = self.make_button("+",lambda: self.change_timeout("away", 1))
+        game_layout.addWidget(btn_away_restore,5, 2)
+        self.home_to_lcd = self.make_timeout_display(self.state.home_timeouts)
+        game_layout.addWidget(self.home_to_lcd,5, 6)
+        btn_home_use = self.make_button("-",lambda: self.change_timeout("home", -1))
+        game_layout.addWidget(btn_home_use,5, 5)
+        btn_home_restore = self.make_button("+",lambda: self.change_timeout("home", 1))
+        game_layout.addWidget(btn_home_restore,5, 7)
+        self.time_lcd = self.make_lcd(5)
         self.time_lcd.display(f"{self.state.minutes:02d}:{self.state.seconds:02d}")
-        self.time_lcd.setStyleSheet("""QLCDNumber { color: white;background-color: black;border: 2px solid #333;padding: 2px;}""")
-        clock_layout.addWidget(self.time_lcd, 6, 1, 1, 1)
-        self.min_edit = QSpinBox()
-        self.min_edit.setRange(0, 90)
-        self.min_edit.setValue(self.state.minutes)
-        self.min_edit.setFixedWidth(60)
-        self.min_edit.setStyleSheet("background-color:white; color:black;")
+        clock_layout.addWidget(self.time_lcd,6, 1)
+        self.min_edit = self.make_spinbox(0,90,self.state.minutes,width=60)
         self.min_edit.editingFinished.connect(self.set_lcd_clock_from_inputs)
-        clock_layout.addWidget(self.min_edit, 5, 0)
-        self.sec_edit = QSpinBox()
-        self.sec_edit.setRange(0, 59)
-        self.sec_edit.setValue(self.state.seconds)
-        self.sec_edit.setFixedWidth(60)
-        self.sec_edit.setStyleSheet("background-color:white; color:black;")
+        clock_layout.addWidget(self.min_edit,5, 0)
+        self.sec_edit = self.make_spinbox(0,59,self.state.seconds,width=60)
         self.sec_edit.editingFinished.connect(self.set_lcd_clock_from_inputs)
-        clock_layout.addWidget(self.sec_edit, 5, 1)
-        btn_set_clock = QPushButton("Set")
-        btn_set_clock.setStyleSheet("background-color:white; color:black;")
-        btn_set_clock.clicked.connect(self.set_lcd_clock_from_inputs)
-        clock_layout.addWidget(btn_set_clock, 5, 2)
-        btn_start = QPushButton("Start Clock")
-        btn_start.clicked.connect(self.start_clock)
-        btn_start.setStyleSheet("background-color:white; color:black;")
-        clock_layout.addWidget(btn_start, 6, 0)
-        btn_stop = QPushButton("Stop Clock")
-        btn_stop.clicked.connect(self.stop_clock)
-        btn_stop.setStyleSheet("background-color:white; color:black;")
-        clock_layout.addWidget(btn_stop, 6, 2)
-        btn_reset = QPushButton("Reset Clock")
-        btn_reset.setStyleSheet("background-color:white; color:black;")
-        btn_reset.clicked.connect(self.reset_clock)
-        clock_layout.addWidget(btn_reset, 6, 3)
-        self.pc_spin = QSpinBox()
-        self.pc_spin.setRange(0, 99)
-        self.pc_spin.setValue(self.state.playclock)
-        self.pc_spin.setStyleSheet("background-color:white; color:black;")
-        clock_layout.addWidget(self.pc_spin, 7, 1)
-        btn_pc = QPushButton("PC Time")
-        btn_pc.setStyleSheet("background-color:white; color:black;")
-        btn_pc.clicked.connect(lambda: self.toggle_playclock_preset(btn_pc))
-        clock_layout.addWidget(btn_pc, 7, 4)
-        btn_start = QPushButton("Start Play Clock")
-        btn_start.clicked.connect(self.start_play_clock)
-        btn_start.setStyleSheet("background-color:white; color:black;")
-        clock_layout.addWidget(btn_start, 7, 0)
-        btn_stop = QPushButton("Stop Play Clock")
-        btn_stop.setStyleSheet("background-color:white; color:black;")
-        btn_stop.clicked.connect(self.stop_play_clock)
-        clock_layout.addWidget(btn_stop, 7, 2)
-        btn_reset = QPushButton("Reset Play Clock")
-        btn_reset.setStyleSheet("background-color:white; color:black;")
-        btn_reset.clicked.connect(self.reset_play_clock)
-        clock_layout.addWidget(btn_reset, 7, 3)
-        btn_nothing = QPushButton("<- Down | Distance ->")
-        btn_nothing.clicked.connect(lambda: None)
-        btn_nothing.setStyleSheet("QPushButton { background-color: #121212; color: white; }")
-        game_layout.addWidget(btn_nothing, 8, 3, 1, 2)
+        clock_layout.addWidget(self.sec_edit,5, 1)
+        btn_set_clock = self.make_button("Set",self.set_lcd_clock_from_inputs)
+        clock_layout.addWidget(btn_set_clock,5, 2)
+        btn_start_clock = self.make_button("Start Clock",self.start_clock)
+        clock_layout.addWidget(btn_start_clock,6, 0)
+        btn_stop_clock = self.make_button("Stop Clock",self.stop_clock)
+        clock_layout.addWidget(btn_stop_clock,6, 2)
+        btn_reset_clock = self.make_button("Reset Clock",self.reset_clock)
+        clock_layout.addWidget(btn_reset_clock,6, 3)
+        self.pc_spin = self.make_spinbox(0,99,self.state.playclock)
+        clock_layout.addWidget(self.pc_spin,7, 1)
+        btn_pc = self.make_button("PC Time",lambda: self.toggle_playclock_preset(btn_pc))
+        clock_layout.addWidget(btn_pc,7, 4)
+        btn_start_pc = self.make_button("Start Play Clock",self.start_play_clock)
+        clock_layout.addWidget(btn_start_pc,7, 0)
+        btn_stop_pc = self.make_button("Stop Play Clock",self.stop_play_clock)
+        clock_layout.addWidget(btn_stop_pc,7, 2)
+        btn_reset_pc = self.make_button("Reset Play Clock",self.reset_play_clock)
+        clock_layout.addWidget(btn_reset_pc,7, 3)
+        game_layout.addWidget(self.make_label_button("<- Down | Distance ->"),8, 3, 1, 2)
         self.down_spin = QComboBox()
-        self.down_spin.addItems(["1", "2", "3", "4" ,""])
+        self.down_spin.addItems(["1","2","3","4",""])
         self.down_spin.setCurrentText(str(self.state.down))
-        self.down_spin.setStyleSheet("background-color:white; color:black;")
-        game_layout.addWidget(self.down_spin, 8, 0, 1, 3)
+        self.down_spin.setStyleSheet(self.BUTTON_STYLE)
+        game_layout.addWidget(self.down_spin,8, 0, 1, 3)
         self.dist_edit = QComboBox()
-        self.dist_edit.setStyleSheet("background-color:white; color:black;")
         self.dist_edit.setEditable(True)
-        self.dist_edit.addItems(["Down", "Goal", "1", "2", "3", "4", "5", "7", "10", "Inches","Final", "Final/OT" ,"HALFTIME", ""])
+        self.dist_edit.addItems(["Down","Goal","1","2","3","4","5","6","7","8","9","10","Inches","Final","Final/OT","HALFTIME",""])
         self.dist_edit.setCurrentText(str(self.state.distance))
-        game_layout.addWidget(self.dist_edit, 8, 5, 1, 2)
-        btn_set_dd = QPushButton("Set Down/Distance")
-        btn_set_dd.clicked.connect(self.set_down_distance)
-        btn_set_dd.setStyleSheet("background-color:white; color:black;")
-        game_layout.addWidget(btn_set_dd, 8, 7, 1, 1)
-        self.period_spin = QSpinBox()
-        self.period_spin.setRange(1, 10)
-        self.period_spin.setValue(self.state.period)
-        self.period_spin.setStyleSheet("background-color:white; color:black;")
-        game_layout.addWidget(self.period_spin, 9, 0)
-        btn_set_period = QPushButton("Set Period")
-        btn_set_period.setStyleSheet("background-color:white; color:black;")
-        btn_set_period.clicked.connect(self.set_period)
-        game_layout.addWidget(btn_set_period, 9, 1)
-        combo_scoring = QComboBox()
-        combo_scoring.setStyleSheet("background-color:white; color:black;")
-        combo_scoring.addItem("Select 2PT or FG")  # placeholder
-        combo_scoring.addItem("2PT Attempt")
-        combo_scoring.addItem("Field Goal")
+        self.dist_edit.setStyleSheet(self.BUTTON_STYLE)
+        game_layout.addWidget(self.dist_edit,8, 5, 1, 2)
+        btn_set_dd = self.make_button("Set Down/Distance",self.set_down_distance)
+        game_layout.addWidget(btn_set_dd,8, 7)
+        self.period_spin = self.make_spinbox(1,10,self.state.period)
+        game_layout.addWidget(self.period_spin,9, 0)
+        btn_set_period = self.make_button("Set Period",self.set_period)
+        game_layout.addWidget(btn_set_period,9, 1)
+        def scoring_callback(choice):
+            if choice == "2PT Attempt":
+                self.on_2pt_clicked()
+            elif choice == "Field Goal":
+                self.on_fg_clicked()
+        combo_scoring = self.create_action_combo("Select 2PT or FG",["2PT Attempt","Field Goal"],scoring_callback)
+        game_layout.addWidget(combo_scoring,9, 3)
+        self.btn_remove_event = self.make_button("Remove Event",self.on_remove_event)
+        game_layout.addWidget(self.btn_remove_event,9, 5)
+        self.flag_button = self.make_button("Flag",self.toggle_flag)
+        game_layout.addWidget(self.flag_button,9, 2)
+        btn_serial = self.make_button("Serial Connection",self.on_serial_button_clicked)
+        grid_info.addWidget(btn_serial,6, 1)
         def on_score_type_changed(index):
             if index == 0:
                 return  # placeholder selected, do nothing
@@ -6627,210 +5515,125 @@ class FootballControl(QMainWindow):
         self.play_timer = QTimer()
         self.play_timer.setInterval(1000)
         self.play_timer.timeout.connect(self.play_tick)
-        # ----------------- PAGE 2: Away Setup -----------------
-        grid_away.addWidget(QLabel("<b>Away Team Setup</b>"), -1, 0)
-        lbl_away_name = QLabel("Enter Away Name:")
-        lbl_away_name.setStyleSheet("color:white;")
-        grid_away.addWidget(lbl_away_name, 1, 0)
-        self.away_setup_name = QLineEdit(self.state.away_name)
-        self.away_setup_name.setStyleSheet("background-color:white; color:black;")
-        grid_away.addWidget(self.away_setup_name, 1, 1)
-        btn_away_name_submit = QPushButton("Submit")
-        btn_away_name_submit.setStyleSheet("background-color:white; color:black;")
-        btn_away_name_submit.clicked.connect(self.submit_away_setup)
-        grid_away.addWidget(btn_away_name_submit, 1, 2)
-        lbl = QLabel("Away Team Rank:")
-        lbl.setStyleSheet("color:white;")
-        grid_away.addWidget(lbl, 1, 3)
-        self.away_rank_edit = QLineEdit()
+        grid_away.addWidget(self.make_label_button("Away Team Setup"),-1,0)
+        grid_away.addWidget(self.make_label_button("Enter Away Name:"),1,0)
+        self.away_setup_name=QLineEdit(self.state.away_name)
+        self.away_setup_name.setStyleSheet(self.BUTTON_STYLE)
+        grid_away.addWidget(self.away_setup_name,1,1)
+        grid_away.addWidget(self.make_button("Submit",self.submit_away_setup),1,2)
+        grid_away.addWidget(self.make_label_button("Away Team Rank:"),1,3)
+        self.away_rank_edit=QLineEdit()
         self.away_rank_edit.setText(str(self.state.away_rank or ""))
-        self.away_rank_edit.setStyleSheet("background-color:white; color:black;")
-        validator = QIntValidator(0, 25, self)
-        self.away_rank_edit.setValidator(validator)
-        grid_away.addWidget(self.away_rank_edit, 1, 4)
-        lbl = QLabel("Away Mascot:")
-        lbl.setStyleSheet("color:white;")
-        grid_away.addWidget(lbl, 2, 2)
-        self.away_setup_mascot = QLineEdit(self.state.away_mascot)
-        self.away_setup_mascot.setStyleSheet("background-color:white; color:black;")
-        grid_away.addWidget(self.away_setup_mascot, 2, 3)
-        btn = QPushButton("Submit")
-        btn.setStyleSheet("background-color:white; color:black;")
-        btn.clicked.connect(self.submit_away_setup)
-        grid_away.addWidget(btn, 2, 4)
-        btn = QPushButton("Submit")
-        btn.setStyleSheet("background-color:white; color:black;")
-        btn.clicked.connect(self.submit_away_setup)
-        grid_away.addWidget(btn, 1, 5)
-        lbl = QLabel("Away Team Color:")
-        lbl.setStyleSheet("color:white;")
-        grid_away.addWidget(lbl, 2, 0)
-        btn = QPushButton("🎨")
-        btn.setStyleSheet("background-color:white; color:black;")
-        btn.clicked.connect(self.pick_away_color_from_setup)
-        grid_away.addWidget(btn, 2, 1)
-        lbl = QLabel("Away Team Logo:")
-        lbl.setStyleSheet("color:white;")
-        grid_away.addWidget(lbl, 3, 0)
-        btn = QPushButton("🖼")
-        btn.setStyleSheet("background-color:white; color:black;")
-        btn.clicked.connect(self.load_away_logo_from_setup)
-        grid_away.addWidget(btn, 3, 1)
-        lbl = QLabel("Away Team Record:")
-        lbl.setStyleSheet("color:white;")
-        grid_away.addWidget(lbl, 4, 0)
-        self.away_record_wins_edit = QLineEdit(str(self.state.away_record_wins))
-        self.away_record_wins_edit.setStyleSheet("background-color:white; color:black;")
-        self.away_record_losses_edit = QLineEdit(str(self.state.away_record_losses))
-        self.away_record_losses_edit.setStyleSheet("background-color:white; color:black;")
-        grid_away.addWidget(self.away_record_wins_edit, 4, 1)
-        grid_away.addWidget(self.away_record_losses_edit, 4, 2)
-        btn = QPushButton("Submit")
-        btn.setStyleSheet("background-color:white; color:black;")
-        btn.clicked.connect(self.submit_away_setup)
-        grid_away.addWidget(btn, 4, 3)
-        lbl = QLabel("Away District Record:")
-        lbl.setStyleSheet("color:white;")
-        grid_away.addWidget(lbl, 5, 0)
-        self.away_district_wins_edit = QLineEdit(str(self.state.away_district_wins))
-        self.away_district_wins_edit.setStyleSheet("background-color:white; color:black;")
-        self.away_district_losses_edit = QLineEdit(str(self.state.away_district_losses))
-        self.away_district_losses_edit.setStyleSheet("background-color:white; color:black;")
-        grid_away.addWidget(self.away_district_wins_edit, 5, 1)
-        grid_away.addWidget(self.away_district_losses_edit, 5, 2)
-        btn = QPushButton("Submit")
-        btn.setStyleSheet("background-color:white; color:black;")
-        btn.clicked.connect(self.submit_away_setup)
-        grid_away.addWidget(btn, 5, 3)   
-
-        # ----------------- PAGE 3: Home Setup -----------------
-        self.chk_district = QCheckBox("District Opponent")
+        self.away_rank_edit.setStyleSheet(self.BUTTON_STYLE)
+        self.away_rank_edit.setValidator(QIntValidator(0,25,self))
+        grid_away.addWidget(self.away_rank_edit,1,4)
+        grid_away.addWidget(self.make_label_button("Away Mascot:"),2,2)
+        self.away_setup_mascot=QLineEdit(self.state.away_mascot)
+        self.away_setup_mascot.setStyleSheet(self.BUTTON_STYLE)
+        grid_away.addWidget(self.away_setup_mascot,2,3)
+        grid_away.addWidget(self.make_button("Submit",self.submit_away_setup),2,4)
+        grid_away.addWidget(self.make_button("Submit",self.submit_away_setup),1,5)
+        grid_away.addWidget(self.make_label_button("Away Team Color:"),2,0)
+        btn=self.make_button("🎨",self.pick_away_color_from_setup)
+        grid_away.addWidget(btn,2,1)
+        grid_away.addWidget(self.make_label_button("Away Team Logo:"),3,0)
+        btn=self.make_button("🖼",self.load_away_logo_from_setup)
+        grid_away.addWidget(btn,3,1)
+        grid_away.addWidget(self.make_label_button("Away Team Record:"),4,0)
+        self.away_record_wins_edit=QLineEdit(str(self.state.away_record_wins))
+        self.away_record_wins_edit.setStyleSheet(self.BUTTON_STYLE)
+        self.away_record_losses_edit=QLineEdit(str(self.state.away_record_losses))
+        self.away_record_losses_edit.setStyleSheet(self.BUTTON_STYLE)
+        grid_away.addWidget(self.away_record_wins_edit,4,1)
+        grid_away.addWidget(self.away_record_losses_edit,4,2)
+        grid_away.addWidget(self.make_button("Submit",self.submit_away_setup),4,3)
+        grid_away.addWidget(self.make_label_button("Away District Record:"),5,0)
+        self.away_district_wins_edit=QLineEdit(str(self.state.away_district_wins))
+        self.away_district_wins_edit.setStyleSheet(self.BUTTON_STYLE)
+        self.away_district_losses_edit=QLineEdit(str(self.state.away_district_losses))
+        self.away_district_losses_edit.setStyleSheet(self.BUTTON_STYLE)
+        grid_away.addWidget(self.away_district_wins_edit,5,1)
+        grid_away.addWidget(self.away_district_losses_edit,5,2)
+        grid_away.addWidget(self.make_button("Submit",self.submit_away_setup),5,3)
+        self.chk_district=QCheckBox("District Opponent")
         self.chk_district.setChecked(False)
         self.chk_district.stateChanged.connect(self.update_district_flag)
         self.chk_district.setStyleSheet("QCheckBox{color:white;} QCheckBox::indicator{width:15px;height:15px;border:2px solid white;background:#121212;} QCheckBox::indicator:checked{background:white;}")
-        grid_info.addWidget(self.chk_district, 5, 0, 1 , 5)
-        grid_home.addWidget(QLabel("<b>Home Team Setup</b>"), -4, 0)
-        lbl = QLabel("Enter Home Name:")
-        lbl.setStyleSheet("color:white;")
-        grid_home.addWidget(lbl, 0, 0)
-        self.home_setup_name = QLineEdit(self.state.home_name)
-        self.home_setup_name.setStyleSheet("background-color:white; color:black;")
-        grid_home.addWidget(self.home_setup_name, 0, 1)
-        btn = QPushButton("Submit")
-        btn.setStyleSheet("background-color:white; color:black;")
-        btn.clicked.connect(self.submit_home_setup)
-        grid_home.addWidget(btn, 0, 2)
-        lbl = QLabel("Home Team Rank:")
-        lbl.setStyleSheet("color:white;")
-        grid_home.addWidget(lbl, 0, 3)
-        self.home_rank_edit = QLineEdit()
+        grid_info.addWidget(self.chk_district,5,0,1,5)
+        grid_home.addWidget(self.make_label_button("Home Team Setup"),-4,0)
+        grid_home.addWidget(self.make_label_button("Enter Home Name:"),0,0)
+        self.home_setup_name=QLineEdit(self.state.home_name)
+        self.home_setup_name.setStyleSheet(self.BUTTON_STYLE)
+        grid_home.addWidget(self.home_setup_name,0,1)
+        grid_home.addWidget(self.make_button("Submit",self.submit_home_setup),0,2)
+        grid_home.addWidget(self.make_label_button("Home Team Rank:"),0,3)
+        self.home_rank_edit=QLineEdit()
         self.home_rank_edit.setText(str(self.state.home_rank or ""))
-        self.home_rank_edit.setStyleSheet("background-color:white; color:black;")
-        validator = QIntValidator(0, 25, self)
-        self.home_rank_edit.setValidator(validator)
-        grid_home.addWidget(self.home_rank_edit, 0, 4)
-        btn = QPushButton("Submit")
-        btn.setStyleSheet("background-color:white; color:black;")
-        btn.clicked.connect(self.submit_home_setup)
-        grid_home.addWidget(btn, 0, 5)
-        lbl = QLabel("Home Mascot:")
-        lbl.setStyleSheet("color:white;")
-        grid_home.addWidget(lbl, 1, 2)
-        self.home_setup_mascot = QLineEdit(self.state.home_mascot)
-        self.home_setup_mascot.setStyleSheet("background-color:white; color:black;")
-        grid_home.addWidget(self.home_setup_mascot, 1, 3)
-        btn = QPushButton("Submit")
-        btn.setStyleSheet("background-color:white; color:black;")
-        btn.clicked.connect(self.submit_home_setup)
-        grid_home.addWidget(btn, 1, 4)
-        lbl = QLabel("Home Team Color:")
-        lbl.setStyleSheet("color:white;")
-        grid_home.addWidget(lbl, 1, 0)
-        btn = QPushButton("🎨")
-        btn.setStyleSheet("background-color:white; color:black;")
-        btn.clicked.connect(self.pick_home_color_from_setup)
-        grid_home.addWidget(btn, 1, 1)
-        lbl = QLabel("Home Team Logo:")
-        lbl.setStyleSheet("color:white;")
-        grid_home.addWidget(lbl, 2, 0)
-        btn = QPushButton("🖼")
-        btn.setStyleSheet("background-color:white; color:black;")
-        btn.clicked.connect(self.load_home_logo_from_setup)
-        grid_home.addWidget(btn, 2, 1)
-        lbl = QLabel("Home Team Record:")
-        lbl.setStyleSheet("color:white;")
-        grid_home.addWidget(lbl, 3, 0)
-        self.home_record_wins_edit = QLineEdit(str(self.state.home_record_wins))
-        self.home_record_wins_edit.setStyleSheet("background-color:white; color:black;")
-        self.home_record_losses_edit = QLineEdit(str(self.state.home_record_losses))
-        self.home_record_losses_edit.setStyleSheet("background-color:white; color:black;")
-        grid_home.addWidget(self.home_record_wins_edit, 3, 1)
-        grid_home.addWidget(self.home_record_losses_edit, 3, 2)
-        btn = QPushButton("Submit")
-        btn.setStyleSheet("background-color:white; color:black;")
-        btn.clicked.connect(self.submit_home_setup)
-        grid_home.addWidget(btn, 3, 3)
-        lbl = QLabel("Home District Record:")
-        lbl.setStyleSheet("color:white;")
-        grid_home.addWidget(lbl, 4, 0)
-        self.home_district_wins_edit = QLineEdit(str(self.state.home_district_wins))
-        self.home_district_wins_edit.setStyleSheet("background-color:white; color:black;")
-        self.home_district_losses_edit = QLineEdit(str(self.state.home_district_losses))
-        self.home_district_losses_edit.setStyleSheet("background-color:white; color:black;")
-        grid_home.addWidget(self.home_district_wins_edit, 4, 1)
-        grid_home.addWidget(self.home_district_losses_edit, 4, 2)
-        btn = QPushButton("Submit")
-        btn.setStyleSheet("background-color:white; color:black;")
-        btn.clicked.connect(self.submit_home_setup)
-        grid_home.addWidget(btn, 4, 3)
-
-        # ------  PAGE 4 Buttons ------
-        grid_info.addWidget(QLabel("hehe"),-1,0)
-        lbl = QLabel("Graphics:")
-        lbl.setStyleSheet("color:white;")
-        grid_info.addWidget(lbl, 3, 0)
-        self.btn_show_intro = FlashingButton("Show Intro Graphic")
-        self.btn_show_intro.setStyleSheet("background-color:white; color:black;")
-        self.btn_show_intro.clicked.connect(lambda: self.show_intro(force_double=True))
-        grid_info.addWidget(self.btn_show_intro, 3, 1)
-        self.btn_show_scorebug = FlashingButton("Show Scorebug")
-        self.btn_show_scorebug.setStyleSheet("background-color:white; color:black;")
-        self.btn_show_scorebug.clicked.connect(lambda: self.show_scorebug(force_double=True))
-        grid_info.addWidget(self.btn_show_scorebug, 3, 2)
-        self.btn_show_breakboard = FlashingButton("Show Breakboard")
-        self.btn_show_breakboard.setStyleSheet("background-color:white; color:black;")
-        self.btn_show_breakboard.clicked.connect(lambda: self.show_breakboard(force_double=True))
-        grid_info.addWidget(self.btn_show_breakboard, 3, 3)
-        self.btn_show_final = FlashingButton("Show Final")
-        self.btn_show_final.setStyleSheet("background-color:white; color:black;")
-        self.btn_show_final.clicked.connect(lambda: self.show_final(force_double=True))
-        grid_info.addWidget(self.btn_show_final, 3, 4)
-        lbl = QLabel("Event Location:")
-        lbl.setStyleSheet("color:white;")
-        grid_info.addWidget(lbl, 1, 0)
-        self.event_location_edit = QLineEdit()
+        self.home_rank_edit.setStyleSheet(self.BUTTON_STYLE)
+        self.home_rank_edit.setValidator(QIntValidator(0,25,self))
+        grid_home.addWidget(self.home_rank_edit,0,4)
+        grid_home.addWidget(self.make_button("Submit",self.submit_home_setup),0,5)
+        grid_home.addWidget(self.make_label_button("Home Mascot:"),1,2)
+        self.home_setup_mascot=QLineEdit(self.state.home_mascot)
+        self.home_setup_mascot.setStyleSheet(self.BUTTON_STYLE)
+        grid_home.addWidget(self.home_setup_mascot,1,3)
+        grid_home.addWidget(self.make_button("Submit",self.submit_home_setup),1,4)
+        grid_home.addWidget(self.make_label_button("Home Team Color:"),1,0)
+        btn=self.make_button("🎨",self.pick_home_color_from_setup)
+        grid_home.addWidget(btn,1,1)
+        grid_home.addWidget(self.make_label_button("Home Team Logo:"),2,0)
+        btn=self.make_button("🖼",self.load_home_logo_from_setup)
+        grid_home.addWidget(btn,2,1)
+        grid_home.addWidget(self.make_label_button("Home Team Record:"),3,0)
+        self.home_record_wins_edit=QLineEdit(str(self.state.home_record_wins))
+        self.home_record_wins_edit.setStyleSheet(self.BUTTON_STYLE)
+        self.home_record_losses_edit=QLineEdit(str(self.state.home_record_losses))
+        self.home_record_losses_edit.setStyleSheet(self.BUTTON_STYLE)
+        grid_home.addWidget(self.home_record_wins_edit,3,1)
+        grid_home.addWidget(self.home_record_losses_edit,3,2)
+        grid_home.addWidget(self.make_button("Submit",self.submit_home_setup),3,3)
+        grid_home.addWidget(self.make_label_button("Home District Record:"),4,0)
+        self.home_district_wins_edit=QLineEdit(str(self.state.home_district_wins))
+        self.home_district_wins_edit.setStyleSheet(self.BUTTON_STYLE)
+        self.home_district_losses_edit=QLineEdit(str(self.state.home_district_losses))
+        self.home_district_losses_edit.setStyleSheet(self.BUTTON_STYLE)
+        grid_home.addWidget(self.home_district_wins_edit,4,1)
+        grid_home.addWidget(self.home_district_losses_edit,4,2)
+        grid_home.addWidget(self.make_button("Submit",self.submit_home_setup),4,3)
+        grid_info.addWidget(self.make_label_button("hehe"),-1,0)
+        grid_info.addWidget(self.make_label_button("Graphics:"),3,0)
+        self.btn_show_intro=FlashingButton("Show Intro Graphic")
+        self.btn_show_intro.setStyleSheet(self.BUTTON_STYLE)
+        self.btn_show_intro.clicked.connect(lambda:self.show_intro(force_double=True))
+        grid_info.addWidget(self.btn_show_intro,3,1)
+        self.btn_show_scorebug=FlashingButton("Show Scorebug")
+        self.btn_show_scorebug.setStyleSheet(self.BUTTON_STYLE)
+        self.btn_show_scorebug.clicked.connect(lambda:self.show_scorebug(force_double=True))
+        grid_info.addWidget(self.btn_show_scorebug,3,2)
+        self.btn_show_breakboard=FlashingButton("Show Breakboard")
+        self.btn_show_breakboard.setStyleSheet(self.BUTTON_STYLE)
+        self.btn_show_breakboard.clicked.connect(lambda:self.show_breakboard(force_double=True))
+        grid_info.addWidget(self.btn_show_breakboard,3,3)
+        self.btn_show_final=FlashingButton("Show Final")
+        self.btn_show_final.setStyleSheet(self.BUTTON_STYLE)
+        self.btn_show_final.clicked.connect(lambda:self.show_final(force_double=True))
+        grid_info.addWidget(self.btn_show_final,3,4)
+        grid_info.addWidget(self.make_label_button("Event Location:"),1,0)
+        self.event_location_edit=QLineEdit()
         self.event_location_edit.setPlaceholderText("Enter school / event text...")
-        self.event_location_edit.setStyleSheet("background-color:white; color:black;")
-        grid_info.addWidget(self.event_location_edit, 1, 1)
-        self.event_city_edit = QLineEdit()
+        self.event_location_edit.setStyleSheet(self.BUTTON_STYLE)
+        grid_info.addWidget(self.event_location_edit,1,1)
+        self.event_city_edit=QLineEdit()
         self.event_city_edit.setPlaceholderText("Enter city...")
-        self.event_city_edit.setStyleSheet("background-color:white; color:black;")
-        grid_info.addWidget(self.event_city_edit, 1, 2)
-        btn = QPushButton("Submit")
-        btn.setStyleSheet("background-color:white; color:black;")
-        btn.clicked.connect(self.submit_event_location)
-        grid_info.addWidget(btn, 1, 3)
-        lbl = QLabel("Event Info:")
-        lbl.setStyleSheet("color:white;")
-        grid_info.addWidget(lbl, 2, 0)
-        self.bottom_event_edit = QLineEdit()
+        self.event_city_edit.setStyleSheet(self.BUTTON_STYLE)
+        grid_info.addWidget(self.event_city_edit,1,2)
+        grid_info.addWidget(self.make_button("Submit",self.submit_event_location),1,3)
+        grid_info.addWidget(self.make_label_button("Event Info:"),2,0)
+        self.bottom_event_edit=QLineEdit()
         self.bottom_event_edit.setPlaceholderText("Enter event info text...")
-        self.bottom_event_edit.setStyleSheet("background-color:white; color:black;")
-        grid_info.addWidget(self.bottom_event_edit, 2, 1, 1, 2)
-        btn = QPushButton("Submit")
-        btn.setStyleSheet("background-color:white; color:black;")
-        btn.clicked.connect(self.submit_bottom_event)
-        grid_info.addWidget(btn, 2, 3)
+        self.bottom_event_edit.setStyleSheet(self.BUTTON_STYLE)
+        grid_info.addWidget(self.bottom_event_edit,2,1,1,2)
+        grid_info.addWidget(self.make_button("Submit",self.submit_bottom_event),2,3)
     def on_serial_button_clicked(self):
         action, ok = QInputDialog.getItem(self,"Serial Connection","Select action:",["Start Connection", "Stop Connection"],editable=False)
         if ok:
@@ -7399,7 +6202,7 @@ class FootballControl(QMainWindow):
                 self.scoreboard.show_breakboard = False
                 self.scoreboard.show_scorebug = False
                 self.scoreboard.show_football_final = False
-        if (not self.state.saway_box_active and not self.state.saway_box_animating and
+        elif (not self.state.saway_box_active and not self.state.saway_box_animating and
             not self.state.shome_box_active and not self.state.shome_box_animating and 
             not self.state.faway_box_active and not self.state.faway_box_animating and
             not self.state.cfinal_box_active and not self.state.cfinal_box_animating and
@@ -7411,7 +6214,7 @@ class FootballControl(QMainWindow):
                 self.scoreboard.show_breakboard = True
                 self.scoreboard.show_scorebug = False
                 self.scoreboard.show_football_final = False
-        if (not self.state.faway_box_active and not self.state.faway_box_animating and
+        elif (not self.state.faway_box_active and not self.state.faway_box_animating and
             not self.state.cfinal_box_active and not self.state.cfinal_box_animating and
             not self.state.centerintro_active and not self.state.centerintro_animating and
             not self.state.homeintro_active and not self.state.homeintro_animating and 
@@ -7422,7 +6225,7 @@ class FootballControl(QMainWindow):
                 self.scoreboard.show_breakboard = False
                 self.scoreboard.show_scorebug = True
                 self.scoreboard.show_football_final = False
-        if (not self.state.saway_box_active and not self.state.saway_box_animating and
+        elif (not self.state.saway_box_active and not self.state.saway_box_animating and
             not self.state.shome_box_active and not self.state.shome_box_animating and
             not self.state.centerintro_active and not self.state.centerintro_animating and
             not self.state.homeintro_active and not self.state.homeintro_animating and 
@@ -7941,6 +6744,81 @@ class FootballControl(QMainWindow):
         self.serial_thread = None
 
 class BasketballControl(QMainWindow):
+    BUTTON_STYLE = "background-color:white; color:black;"
+    DARK_LABEL_STYLE = "QPushButton { background-color: #121212; color: white; }"
+    def make_button(self, text, slot=None, style=None):
+        btn = QPushButton(text)
+        if style is None:
+            style = self.BUTTON_STYLE
+        btn.setStyleSheet(style)
+        if slot:
+            btn.clicked.connect(slot)
+        return btn
+    def make_label_button(self, text):
+        return self.make_button(text,lambda: None,self.DARK_LABEL_STYLE)
+    def make_lcd(self, digits, value=None):
+        lcd = QLCDNumber()
+        lcd.setDigitCount(digits)
+        lcd.setSegmentStyle(QLCDNumber.Flat)
+        lcd.setStyleSheet("""
+            QLCDNumber {
+                color: white;
+                background-color: black;
+                border: 2px solid #333;
+                padding: 2px;
+            }
+        """)
+        if value is not None:
+            lcd.display(value)
+        return lcd
+    def make_spinbox(self,minimum,maximum,value,width=None,hidden=False):
+        spin = QSpinBox()
+        spin.setRange(minimum, maximum)
+        spin.setValue(value)
+        spin.setStyleSheet(self.BUTTON_STYLE)
+        if width:
+            spin.setFixedWidth(width)
+        if hidden:
+            spin.hide()
+        return spin
+    def create_points_combo(self, text, values, team):
+        combo = QComboBox()
+        combo.setStyleSheet(self.BUTTON_STYLE)
+        combo.addItem(text)
+        for value in values:
+            combo.addItem(str(value))
+        def on_changed(index):
+            if index == 0:
+                return
+            points = int(combo.currentText())
+            self.add_points(points, team)
+            combo.setCurrentIndex(0)
+        combo.currentIndexChanged.connect(on_changed)
+        return combo
+    def create_action_combo(self, placeholder, items, callback):
+        combo = QComboBox()
+        combo.setStyleSheet(self.BUTTON_STYLE)
+        combo.addItem(placeholder)
+        for item in items:
+            combo.addItem(item)
+        def on_changed(index):
+            if index == 0:
+                return
+            callback(combo.currentText())
+            combo.setCurrentIndex(0)
+        combo.currentIndexChanged.connect(on_changed)
+        return combo
+    def make_team_score_display(self, value):
+        spin = self.make_spinbox(0,999,value,hidden=True)
+        lcd = self.make_lcd(3)
+        lcd.setFixedWidth(240)
+        lcd.setFixedHeight(60)
+        lcd.setSizePolicy(QSizePolicy.Fixed,QSizePolicy.Fixed)
+        spin.valueChanged.connect(lcd.display)
+        return spin, lcd
+    def make_timeout_display(self, value):
+        lcd = self.make_lcd(1, value)
+        return lcd
     def __init__(self, state: ScoreState, scoreboard: BasketballScoreboard):
         super().__init__()
         self.state = state
@@ -11197,7 +10075,456 @@ QLCDNumber {
         self.repaint_scoreboard()
         self.serial_thread = None
 class BaseballSoftballControl(QMainWindow):
-    pass
+    def __init__(self, state: ScoreState, scoreboard: BaseballSoftballScoreboard):
+        super().__init__()
+        self.state = state
+        self.setStyleSheet("""
+        QWidget{background:#121212;color:white;font-size:12px;}
+        QGroupBox{border:1px solid #2a2a2a;margin-top:10px;padding:8px;font-weight:bold;}
+        QGroupBox::title{subcontrol-origin:margin;left:10px;padding:0 5px;}
+        QPushButton{background:white;color:black;border:none;padding:6px;border-radius:6px;}
+        QPushButton:hover{background:#e6e6e6;}
+        QPushButton:pressed{background:#cfcfcf;}
+        QLabel{color:white;}
+        QLCDNumber{background:#0a0a0a;color:white;border:1px solid #333;border-radius:6px;}
+        QTabWidget::pane{background:white;}
+        QTabBar::tab{background:white;color:black;padding:6px;}
+        QTabBar::tab:selected{background:white;color:black;}
+        """)
+        self.scoreboard = scoreboard
+        self.state.first_base = False
+        self.state.second_base = False
+        self.state.third_base = False
+        self.state.outs = False
+        self.setWindowTitle("Baseball/Softball Scoreboard Control")
+        self.setMinimumSize(720, 520)
+        tabs = QTabWidget()
+        self.setCentralWidget(tabs)
+        page1 = QWidget()
+        tabs.addTab(page1, "Game Info Setup")
+        grid_info = QGridLayout()
+        page1.setLayout(grid_info)
+        page2 = QWidget()
+        tabs.addTab(page2, "Main Controls")
+        grid = QGridLayout()
+        page2.setLayout(grid)
+        score_group = QGroupBox("Score Control")
+        count_group = QGroupBox("Count Control")
+        inning_group = QGroupBox("Inning Control")
+        bases_group = QGroupBox("Bases Control")
+        score_layout = QGridLayout()
+        count_layout = QGridLayout()
+        inning_layout = QGridLayout()
+        bases_layout = QGridLayout()
+        score_group.setLayout(score_layout)
+        count_group.setLayout(count_layout)
+        inning_group.setLayout(inning_layout)
+        bases_group.setLayout(bases_layout)
+        grid.addWidget(score_group, 0, 0, 1, 2)
+        grid.addWidget(count_group, 1, 0)
+        grid.addWidget(inning_group, 1, 1)
+        grid.addWidget(bases_group, 2, 0, 1, 2)
+        page3 = QWidget()
+        tabs.addTab(page3, "Away Setup")
+        grid_away = QGridLayout()
+        page3.setLayout(grid_away)
+        page4 = QWidget()
+        tabs.addTab(page4, "Home Setup")
+        grid_home = QGridLayout()
+        page4.setLayout(grid_home)
+        self.away_lcd = QLCDNumber()
+        self.home_lcd = QLCDNumber()
+        self.away_lcd.setDigitCount(3)
+        self.home_lcd.setDigitCount(3)
+        self.away_lcd.display(self.state.bsaway_score)
+        self.home_lcd.display(self.state.bshome_score)
+        btn_away = QPushButton("Away +1")
+        btn_home = QPushButton("Home +1")
+        btn_away.clicked.connect(lambda: self.add_runs("away", 1))
+        btn_home.clicked.connect(lambda: self.add_runs("home", 1))
+        score_layout.addWidget(QLabel(self.state.away_name), 0, 0)
+        score_layout.addWidget(QLabel(self.state.home_name), 0, 1)
+        score_layout.addWidget(self.away_lcd, 1, 0)
+        score_layout.addWidget(self.home_lcd, 1, 1)
+        score_layout.addWidget(btn_away, 2, 0)
+        score_layout.addWidget(btn_home, 2, 1)
+        self.balls_lcd = QLCDNumber()
+        self.strikes_lcd = QLCDNumber()
+        self.outs_lcd = QLCDNumber()
+        for lcd in (self.balls_lcd, self.strikes_lcd, self.outs_lcd):
+            lcd.setDigitCount(1)
+        self.update_count()
+        btn_ball = QPushButton("+ Ball")
+        btn_strike = QPushButton("+ Strike")
+        btn_out = QPushButton("+ Out")
+        btn_ball.clicked.connect(lambda: self.change_ball(1))
+        btn_strike.clicked.connect(lambda: self.change_strike(1))
+        btn_out.clicked.connect(lambda: self.change_out(1))
+        count_layout.addWidget(QLabel("Balls"), 0, 0)
+        count_layout.addWidget(QLabel("Strikes"), 0, 1)
+        count_layout.addWidget(QLabel("Outs"), 0, 2)
+        count_layout.addWidget(self.balls_lcd, 1, 0)
+        count_layout.addWidget(self.strikes_lcd, 1, 1)
+        count_layout.addWidget(self.outs_lcd, 1, 2)
+        count_layout.addWidget(btn_ball, 2, 0)
+        count_layout.addWidget(btn_strike, 2, 1)
+        count_layout.addWidget(btn_out, 2, 2)
+        btn_reset = QPushButton("Reset Count")
+        btn_reset.clicked.connect(self.reset_count)
+        count_layout.addWidget(btn_reset, 3, 0, 1, 3)
+        self.inning_lcd = QLCDNumber()
+        self.inning_lcd.setDigitCount(2)
+        self.inning_lcd.display(self.state.inning)
+        btn_top = QPushButton("Top")
+        btn_bottom = QPushButton("Bottom")
+        btn_next = QPushButton("Next Inning")
+        btn_top.clicked.connect(lambda: self.set_possession("top"))
+        btn_bottom.clicked.connect(lambda: self.set_possession("bottom"))
+        btn_top.clicked.connect(lambda: self.set_half(True))
+        btn_bottom.clicked.connect(lambda: self.set_half(False))
+        btn_next.clicked.connect(self.next_inning)
+        btn_hr = QPushButton("Home Run")
+        btn_hr.clicked.connect(self.hit_home_run)
+        score_layout.addWidget(btn_hr, 3, 0, 1, 2)
+        inning_layout.addWidget(QLabel("Inning"), 0, 0)
+        inning_layout.addWidget(self.inning_lcd, 1, 0)
+        inning_layout.addWidget(btn_top, 2, 0)
+        inning_layout.addWidget(btn_bottom, 2, 1)
+        inning_layout.addWidget(btn_next, 2, 2)
+        grid_away.addWidget(QLabel("<b>Away Team Setup</b>"), -1, 0)
+        grid_away.addWidget(QLabel("Enter Away Name:"), 1, 0)
+        self.away_setup_name = QLineEdit(self.state.away_name)
+        grid_away.addWidget(self.away_setup_name, 1, 1)
+        btn_away_name_submit = QPushButton("Submit")
+        btn_away_name_submit.clicked.connect(self.submit_away_setup)
+        grid_away.addWidget(btn_away_name_submit, 1, 2)
+        grid_away.addWidget(QLabel("Away Team Color:"), 2, 0)
+        btn_away_pick_color = QPushButton("🎨")
+        btn_away_pick_color.clicked.connect(self.pick_away_color_from_setup)
+        grid_away.addWidget(btn_away_pick_color, 2, 1)
+        grid_away.addWidget(QLabel("Away Team Logo:"), 3, 0)
+        btn_away_load_logo = QPushButton("🖼")
+        btn_away_load_logo.clicked.connect(self.load_away_logo_from_setup)
+        grid_away.addWidget(btn_away_load_logo, 3, 1)
+        #grid_away.addWidget(QLabel("Away Team Record:"), 4, 0)
+        #self.away_record_wins_edit = QLineEdit(str(self.state.away_record_wins))
+        #self.away_record_losses_edit = QLineEdit(str(self.state.away_record_losses))
+        #grid_away.addWidget(self.away_record_wins_edit, 4, 1)
+        #grid_away.addWidget(self.away_record_losses_edit, 4, 2)
+        #btn_away_record_submit = QPushButton("Submit")
+        #btn_away_record_submit.clicked.connect(self.submit_away_setup)
+        #grid_away.addWidget(btn_away_record_submit, 4, 3)
+        #grid_away.addWidget(QLabel("Away District Record:"), 5, 0)
+        #self.away_district_wins_edit = QLineEdit(str(self.state.away_district_wins))
+        #self.away_district_losses_edit = QLineEdit(str(self.state.away_district_losses))
+        #grid_away.addWidget(self.away_district_wins_edit, 5, 1)
+        #grid_away.addWidget(self.away_district_losses_edit, 5, 2)
+        #btn_away_district_submit = QPushButton("Submit")
+        #btn_away_district_submit.clicked.connect(self.submit_away_setup)
+        #grid_away.addWidget(btn_away_district_submit, 5, 3)
+        grid_home.addWidget(QLabel("<b>Home Team Setup</b>"), -4, 0)
+        grid_home.addWidget(QLabel("Enter Home Name:"), 0, 0)
+        self.home_setup_name = QLineEdit(self.state.home_name)
+        grid_home.addWidget(self.home_setup_name, 0, 1)
+        btn_home_name_submit = QPushButton("Submit")
+        btn_home_name_submit.clicked.connect(self.submit_home_setup)
+        grid_home.addWidget(btn_home_name_submit, 0, 2)
+        grid_home.addWidget(QLabel("Home Team Color:"), 1, 0)
+        btn_home_pick_color = QPushButton("🎨")
+        btn_home_pick_color.clicked.connect(self.pick_home_color_from_setup)
+        grid_home.addWidget(btn_home_pick_color, 1, 1)
+        grid_home.addWidget(QLabel("Home Team Logo:"), 2, 0)
+        btn_home_load_logo = QPushButton("🖼")
+        btn_home_load_logo.clicked.connect(self.load_home_logo_from_setup)
+        grid_home.addWidget(btn_home_load_logo, 2, 1)
+        #grid_home.addWidget(QLabel("Home Team Record:"), 3, 0)
+        #self.home_record_wins_edit = QLineEdit(str(self.state.home_record_wins))
+        #self.home_record_losses_edit = QLineEdit(str(self.state.home_record_losses))
+        #grid_home.addWidget(self.home_record_wins_edit, 3, 1)
+        #grid_home.addWidget(self.home_record_losses_edit, 3, 2)
+        #btn_home_record_submit = QPushButton("Submit")
+        #btn_home_record_submit.clicked.connect(self.submit_home_setup)
+        #grid_home.addWidget(btn_home_record_submit, 3, 3)
+        #grid_home.addWidget(QLabel("Home District Record:"), 4, 0)
+        #grid_home.addWidget(self.home_district_wins_edit, 4, 1)
+        #grid_home.addWidget(self.home_district_losses_edit, 4, 2)
+        #btn_home_district_submit = QPushButton("Submit")
+        #btn_home_district_submit.clicked.connect(self.submit_home_setup)
+        #grid_home.addWidget(btn_home_district_submit, 4, 3)
+        btn_first = QPushButton("1st Base")
+        btn_second = QPushButton("2nd Base")
+        btn_third = QPushButton("3rd Base")
+        btn_clear_bases = QPushButton("Clear Bases")
+
+        btn_first.clicked.connect(lambda: self.set_base(1))
+        btn_second.clicked.connect(lambda: self.set_base(2))
+        btn_third.clicked.connect(lambda: self.set_base(3))
+        btn_clear_bases.clicked.connect(self.clear_bases)
+
+        bases_layout.addWidget(btn_first, 0, 0)
+        bases_layout.addWidget(btn_second, 0, 1)
+        bases_layout.addWidget(btn_third, 0, 2)
+        bases_layout.addWidget(btn_clear_bases, 1, 0, 1, 3)
+    def repaint_scoreboard(self):
+        self.scoreboard.update()
+    def pick_away_color_from_setup(self):
+        c = QColorDialog.getColor(self.state.away_color, self, "Pick Away Color")
+        if c.isValid():
+            self.state.away_color = c
+            self.away_setup_name.setText(self.away_setup_name.text())  # no-op but keeps UI consistent
+            self.repaint_scoreboard()
+
+    def pick_home_color_from_setup(self):
+        c = QColorDialog.getColor(self.state.home_color, self, "Pick Home Color")
+        if c.isValid():
+            self.state.home_color = c
+            self.home_setup_name.setText(self.home_setup_name.text())
+            self.repaint_scoreboard()
+
+    def load_away_logo_from_setup(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Open away logo", "", "Images (*.png *.jpg *.bmp)")
+        if path:
+            pm = QPixmap(path)
+            pm = pm.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.state.away_logo = pm
+            self.repaint_scoreboard()
+    def update_base_buttons(self):
+        self.btn_first.setEnabled(not self.state.first_base)
+        self.btn_second.setEnabled(not self.state.second_base)
+        self.btn_third.setEnabled(not self.state.third_base)
+    def load_home_logo_from_setup(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Open home logo", "", "Images (*.png *.jpg *.bmp)")
+        if path:
+            pm = QPixmap(path)
+            pm = pm.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.state.home_logo = pm
+            self.repaint_scoreboard()
+    def draw_rect(self, p, x, y, w, h, color):
+        shadow = QColor(0, 0, 0, 120)
+
+        for i in range(8):
+            alpha = 120 - (i * 15)
+            shadow.setAlpha(max(alpha, 0))
+            p.setBrush(shadow)
+            p.drawRect(int(x + 6 + i), int(y + 6 + i), int(w - i*2), int(h - i*2))
+
+        p.setBrush(color)
+        p.drawRect(int(x), int(y), int(w), int(h))
+    def submit_away_setup(self):
+        text = self.away_setup_name.text().strip() or self.state.away_name
+        metrics = QFontMetrics(self.title_font)  
+        if metrics.horizontalAdvance(text) > 150:
+            QMessageBox.warning(self, "Name Too Long", "The away team name is too long.\nPlease enter a shorter name.")
+            return
+
+        self.state.away_name = text
+        try:
+            self.state.away_record_wins = int(self.away_record_wins_edit.text().strip())
+        except Exception:
+            pass
+        try:
+            self.state.away_record_losses = int(self.away_record_losses_edit.text().strip())
+        except Exception:
+            pass
+        try:
+            self.state.away_district_wins = int(self.away_district_wins_edit.text().strip())
+        except Exception:
+            pass
+        try:
+            self.state.away_district_losses = int(self.away_district_losses_edit.text().strip())
+        except Exception:
+            pass
+        self.repaint_scoreboard()
+
+    def submit_home_setup(self):
+        text = self.home_setup_name.text().strip() or self.state.home_name
+        metrics = QFontMetrics(self.title_font)  
+        if metrics.horizontalAdvance(text) > 200:
+            QMessageBox.warning(self, "Name Too Long", "The home team name is too long.\nPlease enter a shorter name.")
+            return
+
+        self.state.home_name = text
+        try:
+            self.state.home_record_wins = int(self.home_record_wins_edit.text().strip())
+        except Exception:
+            pass
+        try:
+            self.state.home_record_losses = int(self.home_record_losses_edit.text().strip())
+        except Exception:
+            pass
+        try:
+            self.state.home_district_wins = int(self.home_district_wins_edit.text().strip())
+        except Exception:
+            pass
+        try:
+            self.state.home_district_losses = int(self.home_district_losses_edit.text().strip())
+        except Exception:
+            pass
+
+        self.repaint_scoreboard()
+    def set_possession(self, side):
+        self.state.bspossession = side
+        self.update()
+    def add_runs(self, team, runs):
+        runs = int(runs)
+        if team == "away":
+            self.state.bsaway_score += runs
+            self.away_lcd.display(self.state.bsaway_score)
+        else:
+            self.state.bshome_score += runs
+            self.home_lcd.display(self.state.bshome_score)
+        self.scoreboard.update()
+    def set_base(self, base):
+        if base == 1:
+            self.state.first_base = True
+        elif base == 2:
+            self.state.second_base = True
+        elif base == 3:
+            self.state.third_base = True
+
+        self.repaint_scoreboard()
+    def clear_bases(self):
+        self.state.first_base = False
+        self.state.second_base = False
+        self.state.third_base = False
+        self.repaint_scoreboard()
+    def change_ball(self, v):
+        self.state.balls += v
+
+        if self.state.balls >= 4:
+
+            # save old state first (prevents overwrite bugs)
+            first = self.state.first_base
+            second = self.state.second_base
+            third = self.state.third_base
+
+            # runner advance (MLB correct order)
+            self.state.third_base = second
+            self.state.second_base = first
+            self.state.first_base = True
+
+            # ONLY reset count (NOT bases)
+            self.reset_count()
+
+            self.repaint_scoreboard()
+            return
+
+        self.update_count()
+        self.repaint_scoreboard()
+
+
+    def change_strike(self, v):
+        self.state.strikes += v
+
+        if self.state.strikes >= 3:
+            self.state.outs += 1
+            self.reset_count()
+
+            if self.state.outs >= 3:
+                self.state.outs = 0
+                self.state.strikes = 0
+                self.state.balls = 0
+
+                self.state.first_base = False
+                self.state.second_base = False
+                self.state.third_base = False
+
+                self.state.is_bottom = not self.state.is_bottom
+
+            self.repaint_scoreboard()
+            return
+
+        self.update_count()
+        self.repaint_scoreboard()
+
+
+    def change_out(self, v):
+        self.state.outs += v
+
+        # inning reset at 3 outs (IMPORTANT FIX)
+        if self.state.outs >= 3:
+            self.state.outs = 0
+            self.state.strikes = 0
+            self.state.balls = 0
+
+            # optional inning advance hook
+            # self.next_inning()
+
+        self.update_count()
+        self.repaint_scoreboard()
+
+    def reset_count(self):
+        self.state.balls = 0
+        self.state.strikes = 0
+
+        self.update_count()
+        self.repaint_scoreboard()
+
+    def update_count(self):
+        self.balls_lcd.display(self.state.balls)
+        self.strikes_lcd.display(self.state.strikes)
+        self.outs_lcd.display(self.state.outs)
+
+    def set_half(self, top):
+        self.state.top_inning = top
+        self.repaint_scoreboard()
+
+    def next_inning(self):
+        self.state.inning += 1
+        self.state.top_inning = True
+
+        self.state.balls = 0
+        self.state.strikes = 0
+        self.state.outs = 0
+
+        # RESET BASES ON NEW INNING
+        self.state.first_base = False
+        self.state.second_base = False
+        self.state.third_base = False
+
+        self.inning_lcd.display(self.state.inning)
+        self.update_count()
+
+        self.repaint_scoreboard()
+    def hit_home_run(self):
+        team, ok = QInputDialog.getItem(
+            self,
+            "Home Run",
+            "Select scoring team:",
+            ["Home", "Away"],
+            0,
+            False
+        )
+
+        if not ok:
+            return  # user cancelled
+
+        runs = 1  # batter always scores
+
+        # clear bases and count runners
+        if self.state.first_base:
+            runs += 1
+            self.state.first_base = False
+
+        if self.state.second_base:
+            runs += 1
+            self.state.second_base = False
+
+        if self.state.third_base:
+            runs += 1
+            self.state.third_base = False
+
+        # assign score based on popup choice
+        if team == "Home":
+            self.state.bshome_score += runs
+        else:
+            self.state.bsaway_score += runs
+
+        # reset count
+        self.state.balls = 0
+        self.state.strikes = 0
+
+        self.repaint_scoreboard()
 class HockeyControl(QMainWindow):
     pass
 class ProgramSelector(QDialog):
@@ -11236,7 +10563,7 @@ class ScoreboardSelector(QDialog):
         self.setWindowTitle("Select Scoreboard")
         layout = QVBoxLayout(self)
         self.combo = QComboBox()
-        self.combo.addItems(["Football", "Basketball", "Volleyball", "Soccer"])
+        self.combo.addItems(["Football", "Basketball", "Volleyball", "Soccer","Baseball/Softball (WIP)","Hockey (WIP)"])
         self.combo.setCurrentIndex(-1)  # No default selected
         layout.addWidget(self.combo)
         btn = QPushButton("OK")
